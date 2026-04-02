@@ -1,0 +1,10 @@
+
+This resulted in a memory leak where the cache would grow linearly with the number of generated tokens (`max_new_tokens`). This completely undermined the `O(1)` memory promise for long generation tasks and would inevitably lead to an OOM error, nullifying the core advantage of the architecture.
+
+### 1.2. Implemented Fix: In-place Rolling Cache
+
+To address this, I implemented a "rolling buffer" mechanism directly within the decoding branch of the `update` method.
+
+**The Fix:**
+After appending a new token, the code now checks if the total physical length of the cache exceeds the defined maximum (`sink_tokens + keep_tail`). If it does, the cache is rebuilt by concatenating the static `sink` portion with a "rolled" `tail` portion, which discards the oldest tail token to make room for the newest one.
+

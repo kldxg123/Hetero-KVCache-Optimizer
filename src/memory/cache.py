@@ -60,9 +60,29 @@ class HeteroTransientCache(DynamicCache):
             # 瞒天过海：全量退还给 HF，保持 FlashAttention 满血运行
             return key_states, value_states
         else:
-            # 🚀 解码驻留：新字直接拼接入极小的物理池
-            self.key_cache[layer_idx] = torch.cat([self.key_cache[layer_idx], key_states], dim=-2)
-            self.value_cache[layer_idx] = torch.cat([self.value_cache[layer_idx], value_states], dim=-2)
+            # 🚀 解码驻留：新字拼接入物理池，并执行原地滚动 (In-place Rolling)
+            k_cache = self.key_cache[layer_idx]
+            v_cache = self.value_cache[layer_idx]
+
+            # 拼接新 Token
+            new_k = torch.cat([k_cache, key_states], dim=-2)
+            new_v = torch.cat([v_cache, value_states], dim=-2)
+
+            # 检查尾部是否超出容量，如果超出则执行滚动
+            max_len = self.sink_tokens + self.keep_tail
+            if new_k.shape[-2] > max_len:
+                sink_k = new_k[..., :self.sink_tokens, :]
+                tail_k = new_k[..., self.sink_tokens:, :]
+                rolled_tail_k = tail_k[..., -self.keep_tail:, :]
+                new_k = torch.cat([sink_k, rolled_tail_k], dim=-2)
+
+                sink_v = new_v[..., :self.sink_tokens, :]
+                tail_v = new_v[..., self.sink_tokens:, :]
+                rolled_tail_v = tail_v[..., -self.keep_tail:, :]
+                new_v = torch.cat([sink_v, rolled_tail_v], dim=-2)
+
+            self.key_cache[layer_idx] = new_k
+            self.value_cache[layer_idx] = new_v
 
             if layer_idx == 0:
                 self.real_seq_len += 1

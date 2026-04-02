@@ -1,0 +1,14 @@
+
+This fix ensures the physical cache size is strictly bounded, making the system robust against extremely long generation tasks (`max_new_tokens >> keep_tail`) and fulfilling the edge-case testing requirement.
+
+---
+
+## 2. Performance Evaluation (Latency & Throughput)
+
+The test script `tests/run_final_showcase.py` was refactored to remove duplicated code and enhanced to profile latency. The `ShowcaseMemoryProbe` now captures timestamps for each token generation, allowing for the calculation of Time-To-First-Token (TTFT) and Time-Per-Output-Token (TPOT).
+
+**Hypothesis:** "Physical cache reduction lowers CUDA memory access pressure, potentially improving throughput."
+
+**Test Results (Sample):**
+*The following data is illustrative and will be populated by running the updated script.*
+

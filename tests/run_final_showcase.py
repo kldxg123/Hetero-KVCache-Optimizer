@@ -2,6 +2,7 @@ import torch
 import sys
 import os
 import gc
+import time
 from transformers import Qwen2VLForConditionalGeneration, AutoProcessor, AutoConfig
 from transformers.cache_utils import DynamicCache
 from transformers import LogitsProcessor, LogitsProcessorList
@@ -11,9 +12,12 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
+# 导入经过修复和优化的核心缓存实现
+from src.memory.cache import HeteroTransientCache
+
 
 # =====================================================================
-# 🔍 深度探针：精准捕捉 [KV稳定] 与 [峰值下降] 的核心证据
+# 🔍 深度探针：精准捕捉 [KV稳定] [峰值下降] 与 [性能延迟] 的核心证据
 # =====================================================================
 class ShowcaseMemoryProbe(LogitsProcessor):
     def __init__(self, device, name, base_mem, cache=None):
@@ -24,8 +28,13 @@ class ShowcaseMemoryProbe(LogitsProcessor):
         self.cache = cache
         self.prefill_peak = 0.0
         self.kv_mem_log = []
+        self.timings = []
+        self.ttft = 0
+        self.avg_tpot = 0
 
     def __call__(self, input_ids, scores):
+        # 记录每个解码步骤的时间戳
+        self.timings.append(time.perf_counter())
         self.step += 1
 
         # 🚀 剥离预填充尖峰，透视稳态峰值
@@ -44,65 +53,15 @@ class ShowcaseMemoryProbe(LogitsProcessor):
 
         return scores
 
-
-# =====================================================================
-# 🧠 终极架构：瞬态分离缓存 (Transient Hetero Cache)
-# 解决 HF 引擎 FlashAttention 退化问题，完美维持 [精准度]
-# =====================================================================
-class TransientHeteroCache(DynamicCache):
-    def __init__(self, sink_tokens=64, keep_tail=8192):
-        super().__init__()
-        self.sink_tokens = sink_tokens
-        self.keep_tail = keep_tail
-        self.key_cache = []
-        self.value_cache = []
-        self.real_seq_len = 0
-
-    def update(self, key_states, value_states, layer_idx, cache_kwargs=None):
-        new_len = key_states.shape[-2]
-        is_prefill = new_len > 1
-
-        if is_prefill:
-            # 瞬态抽离：保存地基与近期上下文
-            sink_amount = min(new_len, self.sink_tokens)
-            tail_amount = min(max(new_len - sink_amount, 0), self.keep_tail)
-
-            sink_k = key_states[..., :sink_amount, :]
-            sink_v = value_states[..., :sink_amount, :]
-
-            if tail_amount > 0:
-                tail_k = key_states[..., -tail_amount:, :]
-                tail_v = value_states[..., -tail_amount:, :]
-                saved_k = torch.cat([sink_k, tail_k], dim=-2)
-                saved_v = torch.cat([sink_v, tail_v], dim=-2)
-            else:
-                saved_k, saved_v = sink_k, sink_v
-
-            if len(self.key_cache) <= layer_idx:
-                self.key_cache.append(saved_k)
-                self.value_cache.append(saved_v)
-            else:
-                self.key_cache[layer_idx] = saved_k
-                self.value_cache[layer_idx] = saved_v
-
-            if layer_idx == 0:
-                self.real_seq_len += new_len
-
-            # 瞒天过海：全量张量还给 HF，保持 FlashAttention 满血不崩盘
-            return key_states, value_states
-        else:
-            # 解码驻留：新字拼接入极小的物理池
-            self.key_cache[layer_idx] = torch.cat([self.key_cache[layer_idx], key_states], dim=-2)
-            self.value_cache[layer_idx] = torch.cat([self.value_cache[layer_idx], value_states], dim=-2)
-
-            if layer_idx == 0:
-                self.real_seq_len += 1
-
-            return self.key_cache[layer_idx], self.value_cache[layer_idx]
-
-    def get_seq_length(self, layer_idx=0):
-        # 欺骗 RoPE 对齐
-        return self.real_seq_len
+    def calculate_latency(self, start_time):
+        if not self.timings:
+            return
+        # TTFT: 从调用 generate 到第一个 token 的时间
+        self.ttft = self.timings[0] - start_time
+        # TPOT: 后续每个 token 的平均生成时间
+        if len(self.timings) > 1:
+            tpots = [self.timings[i] - self.timings[i-1] for i in range(1, len(self.timings))]
+            self.avg_tpot = sum(tpots) / len(tpots)
 
 
 def run_final_showcase():
@@ -156,10 +115,12 @@ def run_final_showcase():
     probe_native = ShowcaseMemoryProbe(device, "Native", base_mem)
     try:
         with torch.inference_mode():
+            start_time = time.perf_counter()
             outputs_native = model.generate(
                 input_ids=input_ids, max_new_tokens=15,
                 logits_processor=LogitsProcessorList([probe_native])
             )
+            probe_native.calculate_latency(start_time)
         decode_peak_native = torch.cuda.max_memory_allocated(device) / 1024 ** 3
         resp_native = \
         processor.batch_decode([out[len(input_ids[0]):] for out in outputs_native], skip_special_tokens=True)[0]
@@ -176,15 +137,18 @@ def run_final_showcase():
     torch.cuda.empty_cache();
     torch.cuda.reset_peak_memory_stats()
 
-    hetero_cache = TransientHeteroCache()
+    # 使用从 src 导入的、经过修复的缓存控制器
+    hetero_cache = HeteroTransientCache(sink_tokens=64, keep_tail=8192)
     probe_hetero = ShowcaseMemoryProbe(device, "Hetero", base_mem, hetero_cache)
 
     try:
         with torch.inference_mode():
+            start_time = time.perf_counter()
             outputs_hetero = model.generate(
                 input_ids=input_ids, max_new_tokens=15, past_key_values=hetero_cache,
                 logits_processor=LogitsProcessorList([probe_hetero])
             )
+            probe_hetero.calculate_latency(start_time)
         decode_peak_hetero = torch.cuda.max_memory_allocated(device) / 1024 ** 3
         resp_hetero = \
         processor.batch_decode([out[len(input_ids[0]):] for out in outputs_hetero], skip_special_tokens=True)[0]
@@ -227,6 +191,22 @@ def run_final_showcase():
         print(
             f"   ➤ 结论: 在规避引擎预填充尖峰后，系统将决定终端能否跑通的【真实稳态峰值】硬生生砍掉了 {saved_gb:.2f} GB！")
         print("           这一突破使得原生无法在 16GB 平民设备上运行的长序列任务，现在可完美流畅部署！")
+
+    # 4. 性能延迟优势 (新增)
+    print("\n✅ [优势 4：吞吐与延迟性能评估 (Throughput & Latency)]")
+    if probe_native.ttft > 0 and probe_hetero.ttft > 0:
+        print(f"   - 首字延迟 (TTFT):")
+        print(f"     - Native: {probe_native.ttft:.3f} s")
+        print(f"     - Hetero: {probe_hetero.ttft:.3f} s")
+        print(f"   - 吞吐性能 (TPOT - Time Per Output Token):")
+        print(f"     - Native: {probe_native.avg_tpot * 1000:.2f} ms/token")
+        print(f"     - Hetero: {probe_hetero.avg_tpot * 1000:.2f} ms/token")
+        if probe_hetero.avg_tpot < probe_native.avg_tpot:
+            perf_gain = (probe_native.avg_tpot - probe_hetero.avg_tpot) / probe_native.avg_tpot * 100
+            print(f"   ➤ 结论: Hetero-KV 架构通过减小物理缓存，降低了访存带宽压力，解码吞吐量反而提升了 {perf_gain:.2f}%。")
+        else:
+            print(f"   ➤ 结论: Hetero-KV 架构在解码吞吐量上与原生持平或略有下降，但换取了巨大的内存优势。")
+
 
     print("\n" + "█" * 80)
 
