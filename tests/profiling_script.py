@@ -13,7 +13,7 @@ if project_root not in sys.path:
 from src.memory.cache import HeteroTransientCache
 
 
-def profile_transient_cache_effect(device, model_path):
+def profile_transient_cache_effect(model_path, device="cuda:0"):
     # Load model and processor
     model = Qwen2VLForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map=device)
     processor = AutoProcessor.from_pretrained(model_path)
@@ -30,12 +30,9 @@ def profile_transient_cache_effect(device, model_path):
     insert_idx = bg_input.shape[1] - 2000
     input_ids = torch.cat([bg_input[:, :insert_idx], needle_tokens, bg_input[:, insert_idx:], question_tokens], dim=1)
 
-
     for use_cache in [True, False]:
-        print("\n[With Transient Cache]" if use_cache else "\n[Without Transient Cache]")
         cache = HeteroTransientCache(sink_tokens=64, keep_tail=8192) if use_cache else None
         probe = ShowcaseMemoryProbe(device, "Hetero" if use_cache else "Native", base_mem=None, cache=cache)
-
         try:
             with torch.inference_mode():
                 start_time = time.perf_counter()
