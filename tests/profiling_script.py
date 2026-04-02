@@ -60,7 +60,7 @@ def profile_transient_cache_effect(device, model_path):
         probe = ShowcaseMemoryProbe(device, "Hetero" if use_cache else "Native", base_mem=None, cache=cache)
 profile_transient_cache_effect("./models/Qwen2-VL-7B", device="cuda:0")
 
-        try:
+try:
             with torch.inference_mode():
                 start_time = time.perf_counter()
                 outputs = model.generate(
