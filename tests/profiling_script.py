@@ -30,11 +30,10 @@ def profile_transient_cache_effect(device, model_path):
     insert_idx = bg_input.shape[1] - 2000
     input_ids = torch.cat([bg_input[:, :insert_idx], needle_tokens, bg_input[:, insert_idx:], question_tokens], dim=1)
 
-    # Profile with different configurations
 
     # Profile with different configurations
     for use_cache in [True, False]:
-        cache = HeteroTransientCache(sink_tokens=64, keep_tail=8192) if use_cache else None
+        print("\n[With Transient Cache]" if use_cache else "\n[Without Transient Cache]")
         probe = ShowcaseMemoryProbe(device, "Hetero" if use_cache else "Native", base_mem=None, cache=cache)
 
         try:

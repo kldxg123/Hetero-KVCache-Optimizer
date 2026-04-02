@@ -74,12 +74,12 @@ class HeteroTransientCache(DynamicCache):
                 # Ensure slices are handled without exceeding bounds.
                 sink_k = new_k[..., :self.sink_tokens, :]
                 tail_k = new_k[..., self.sink_tokens:, :]
-                rolled_tail_k = tail_k[..., -self.keep_tail:, :]
+                rolled_tail_k = tail_k[..., -self.keep_tail:, :] if tail_k.shape[-2] > self.keep_tail else tail_k
                 new_k = torch.cat([sink_k, rolled_tail_k], dim=-2)
 
                 sink_v = new_v[..., :self.sink_tokens, :]
                 tail_v = new_v[..., self.sink_tokens:, :]
-                rolled_tail_v = tail_v[..., -self.keep_tail:, :]
+                rolled_tail_v = tail_v[..., -self.keep_tail:, :] if tail_v.shape[-2] > self.keep_tail else tail_v
                 new_v = torch.cat([sink_v, rolled_tail_v], dim=-2)
 
             self.key_cache[layer_idx] = new_k
