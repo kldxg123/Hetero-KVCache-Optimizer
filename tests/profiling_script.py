@@ -10,7 +10,27 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from src.memory.cache import HeteroTransientCache
+
+
 def profile_transient_cache_effect(device, model_path):
+    # Load model and processor
+    model = Qwen2VLForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map=device)
+    processor = AutoProcessor.from_pretrained(model_path)
+
+    # Prepare test input of 45k tokens
+    bg_sentence = "Background sentence for long input testing. "
+    bg_tokens = processor.tokenizer(bg_sentence, return_tensors="pt").input_ids[0].to(device)
+    num_repeats = 45000 // len(bg_tokens)
+    bg_input = bg_tokens.repeat(num_repeats).unsqueeze(0)
+
+    needle_tokens = processor.tokenizer(" Code: ABC_123_CODE.", return_tensors="pt").input_ids.to(device)
+    question_tokens = processor.tokenizer(" What is the code? The code is: ", return_tensors="pt").input_ids.to(device)
+
+    insert_idx = bg_input.shape[1] - 2000
+    input_ids = torch.cat([bg_input[:, :insert_idx], needle_tokens, bg_input[:, insert_idx:], question_tokens], dim=1)
+
+    # Profile with different configurations
 
     # Profile with different configurations
     for use_cache in [True, False]:
