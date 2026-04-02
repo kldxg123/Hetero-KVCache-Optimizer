@@ -71,6 +71,7 @@ class HeteroTransientCache(DynamicCache):
             # 检查尾部是否超出容量，如果超出则执行滚动
             max_len = self.sink_tokens + self.keep_tail
             if new_k.shape[-2] > max_len:
+                # Ensure slices are handled without exceeding bounds.
                 sink_k = new_k[..., :self.sink_tokens, :]
                 tail_k = new_k[..., self.sink_tokens:, :]
                 rolled_tail_k = tail_k[..., -self.keep_tail:, :]
