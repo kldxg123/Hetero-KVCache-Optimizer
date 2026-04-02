@@ -57,7 +57,6 @@ def profile_transient_cache_effect(device, model_path):
             print(f"   - 输出: CRASHED")
 
 profile_transient_cache_effect("./models/Qwen2-VL-7B", device="cuda:0")
-    for use_cache in [True, False]:
         cache = HeteroTransientCache(sink_tokens=64, keep_tail=8192) if use_cache else None
         probe = ShowcaseMemoryProbe(device, "Hetero" if use_cache else "Native", base_mem=None, cache=cache)
 
