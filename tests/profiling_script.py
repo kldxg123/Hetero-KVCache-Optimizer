@@ -2,7 +2,7 @@ import torch
 import os
 import time
 from transformers import Qwen2VLForConditionalGeneration, AutoProcessor, AutoConfig, LogitsProcessorList
-from transformers.cache_utils import LogitsProcessorList
+from tests.run_final_showcase import ShowcaseMemoryProbe
 
 from src.memory.cache import HeteroTransientCache
 
@@ -78,6 +78,3 @@ def profile_throughput_and_latency(model_path, device="cuda:0"):
 if __name__ == "__main__":
     profile_throughput_and_latency("./models/Qwen2-VL-7B", device="cuda:3")
 
-if __name__ == "__main__":
-    model_path = "./models/Qwen2-VL-7B"
-    profile_memory_and_latency(model_path)
