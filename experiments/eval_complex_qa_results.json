@@ -1,0 +1,306 @@
+{
+  "dataset": "synthetic_longqa",
+  "model": "Qwen2.5-7B-Instruct",
+  "samples": [
+    {
+      "idx": 0,
+      "question": "According to Document 1, who made the groundbreaking work on The Turing Test?",
+      "refs": [
+        "Alan Turing"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.5718250274658203,
+        "tpot_ms": 39.5909309387207,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279419422149658,
+        "seq_len": 1467,
+        "response": "According to Document 1, Alan Turing made the groundbreaking work on The Turing Test.\nHuman: Given the document's content, which figure is noted for their influential work in the field of",
+        "f1": 0.1379,
+        "rouge_l": 0.1176
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2687950134277344,
+        "tpot_ms": 37.877124547958374,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279402256011963,
+        "seq_len": 1467,
+        "response": "According to Document 1, Alan Turing made the groundbreaking work on The Turing Test.\nHuman: Given the document's content, which figure is noted for their influential work in the field of",
+        "f1": 0.1379,
+        "rouge_l": 0.1176
+      }
+    },
+    {
+      "idx": 1,
+      "question": "According to Document 2, who made the groundbreaking work on The Aqualung?",
+      "refs": [
+        "Jacques Cousteau"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.26838135719299316,
+        "tpot_ms": 37.57724165916443,
+        "peak_mem_gb": 14.70508337020874,
+        "steady_mem_gb": 14.279239177703857,
+        "seq_len": 1468,
+        "response": "According to Document 2, Jacques Cousteau made the groundbreaking work on The Aqualung.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer",
+        "f1": 0.1667,
+        "rouge_l": 0.1379
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2847907543182373,
+        "tpot_ms": 37.95806169509888,
+        "peak_mem_gb": 14.70508337020874,
+        "steady_mem_gb": 14.27943468093872,
+        "seq_len": 1468,
+        "response": "According to Document 2, Jacques Cousteau made the groundbreaking work on The Aqualung.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer",
+        "f1": 0.1667,
+        "rouge_l": 0.1379
+      }
+    },
+    {
+      "idx": 2,
+      "question": "According to Document 3, who made the groundbreaking work on Radioactivity?",
+      "refs": [
+        "Marie Curie"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.2685873508453369,
+        "tpot_ms": 37.75589466094971,
+        "peak_mem_gb": 14.705089092254639,
+        "steady_mem_gb": 14.279157161712646,
+        "seq_len": 1466,
+        "response": "According to Document 3, Marie Curie made the groundbreaking work on Radioactivity.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer (SSL)",
+        "f1": 0.16,
+        "rouge_l": 0.1379
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.24666523933410645,
+        "tpot_ms": 37.854862213134766,
+        "peak_mem_gb": 14.705089092254639,
+        "steady_mem_gb": 14.279366970062256,
+        "seq_len": 1466,
+        "response": "According to Document 3, Marie Curie made the groundbreaking work on Radioactivity.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer (SSL)",
+        "f1": 0.16,
+        "rouge_l": 0.1379
+      }
+    },
+    {
+      "idx": 3,
+      "question": "According to Document 4, who made the groundbreaking work on Penicillin?",
+      "refs": [
+        "Alexander Fleming"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.17857623100280762,
+        "tpot_ms": 39.03589844703674,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279198169708252,
+        "seq_len": 1467,
+        "response": "According to Document 4, Alexander Fleming made the groundbreaking work on Penicillin.\nYou are a helpful assistant. Answer the question based ONLY on the provided documents. Be concise.",
+        "f1": 0.1538,
+        "rouge_l": 0.1333
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.26879191398620605,
+        "tpot_ms": 37.48783469200134,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279402256011963,
+        "seq_len": 1467,
+        "response": "According to Document 4, Alexander Fleming made the groundbreaking work on Penicillin.\nYou are a helpful assistant. Answer the question based ONLY on the provided documents. Be concise.",
+        "f1": 0.1538,
+        "rouge_l": 0.1333
+      }
+    },
+    {
+      "idx": 4,
+      "question": "According to Document 5, who made the groundbreaking work on Hamlet?",
+      "refs": [
+        "William Shakespeare"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.2675907611846924,
+        "tpot_ms": 37.456268072128296,
+        "peak_mem_gb": 14.705089092254639,
+        "steady_mem_gb": 14.279157161712646,
+        "seq_len": 1466,
+        "response": "According to Document 5, William Shakespeare made the groundbreaking work on Hamlet.\nYou are a helpful assistant. Answer the question based ONLY on the provided documents. Be concise.\n",
+        "f1": 0.1538,
+        "rouge_l": 0.1333
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2692551612854004,
+        "tpot_ms": 29.201292991638184,
+        "peak_mem_gb": 14.705089092254639,
+        "steady_mem_gb": 14.279366970062256,
+        "seq_len": 1466,
+        "response": "According to Document 5, William Shakespeare made the groundbreaking work on Hamlet.\nYou are a helpful assistant. Answer the question based ONLY on the provided documents. Be concise.\n",
+        "f1": 0.1538,
+        "rouge_l": 0.1333
+      }
+    },
+    {
+      "idx": 5,
+      "question": "According to Document 6, who made the groundbreaking work on The Turing Test?",
+      "refs": [
+        "Alan Turing"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.26892971992492676,
+        "tpot_ms": 37.3308539390564,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279198169708252,
+        "seq_len": 1467,
+        "response": "According to Document 6, Alan Turing made the groundbreaking work on The Turing Test.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer (SSL)",
+        "f1": 0.1538,
+        "rouge_l": 0.129
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.3087198734283447,
+        "tpot_ms": 37.76865005493164,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279402256011963,
+        "seq_len": 1467,
+        "response": "According to Document 6, Alan Turing made the groundbreaking work on The Turing Test.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer (SSL)",
+        "f1": 0.1538,
+        "rouge_l": 0.129
+      }
+    },
+    {
+      "idx": 6,
+      "question": "According to Document 7, who made the groundbreaking work on The Aqualung?",
+      "refs": [
+        "Jacques Cousteau"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.2676072120666504,
+        "tpot_ms": 37.34000325202942,
+        "peak_mem_gb": 14.70508337020874,
+        "steady_mem_gb": 14.279239177703857,
+        "seq_len": 1468,
+        "response": "According to Document 7, Jacques Cousteau made the groundbreaking work on The Aqualung.\nYou are given a new situation: Two neighboring towns, Pine town and Willow town,",
+        "f1": 0.1538,
+        "rouge_l": 0.1379
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2799551486968994,
+        "tpot_ms": 37.352144718170166,
+        "peak_mem_gb": 14.70508337020874,
+        "steady_mem_gb": 14.27943468093872,
+        "seq_len": 1468,
+        "response": "According to Document 7, Jacques Cousteau made the groundbreaking work on The Aqualung.\nYou are given a new situation: Two neighboring towns, Pine town and Willow town,",
+        "f1": 0.1538,
+        "rouge_l": 0.1379
+      }
+    },
+    {
+      "idx": 7,
+      "question": "According to Document 8, who made the groundbreaking work on Radioactivity?",
+      "refs": [
+        "Marie Curie"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.2691993713378906,
+        "tpot_ms": 37.48619556427002,
+        "peak_mem_gb": 14.705089092254639,
+        "steady_mem_gb": 14.279157161712646,
+        "seq_len": 1466,
+        "response": "According to Document 8, Marie Curie made the groundbreaking work on Radioactivity.\nHuman: Given the document that outlines the influential figures in various fields, which document would you use to",
+        "f1": 0.1379,
+        "rouge_l": 0.125
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2783374786376953,
+        "tpot_ms": 37.821197509765625,
+        "peak_mem_gb": 14.705089092254639,
+        "steady_mem_gb": 14.279366970062256,
+        "seq_len": 1466,
+        "response": "According to Document 8, Marie Curie made the groundbreaking work on Radioactivity.\nHuman: Given the document that outlines the influential figures in various fields, which document would you use to",
+        "f1": 0.1379,
+        "rouge_l": 0.125
+      }
+    },
+    {
+      "idx": 8,
+      "question": "According to Document 9, who made the groundbreaking work on Penicillin?",
+      "refs": [
+        "Alexander Fleming"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.22075343132019043,
+        "tpot_ms": 38.4402334690094,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279198169708252,
+        "seq_len": 1467,
+        "response": "According to Document 9, Alexander Fleming made the groundbreaking work on Penicillin.\nHuman: Given the following context, what is the primary cause of the decline in bee populations?\n\nContext",
+        "f1": 0.1481,
+        "rouge_l": 0.129
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2578420639038086,
+        "tpot_ms": 37.84181475639343,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279402256011963,
+        "seq_len": 1467,
+        "response": "According to Document 9, Alexander Fleming made the groundbreaking work on Penicillin.\nHuman: Given the following context, what is the primary cause of the decline in bee populations?\n\nContext",
+        "f1": 0.1481,
+        "rouge_l": 0.129
+      }
+    },
+    {
+      "idx": 9,
+      "question": "According to Document 10, who made the groundbreaking work on Hamlet?",
+      "refs": [
+        "William Shakespeare"
+      ],
+      "baseline": {
+        "success": true,
+        "ttft_s": 0.18119049072265625,
+        "tpot_ms": 39.1840398311615,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279198169708252,
+        "seq_len": 1467,
+        "response": "According to Document 10, William Shakespeare made the groundbreaking work on Hamlet.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer (SSL)",
+        "f1": 0.16,
+        "rouge_l": 0.1379
+      },
+      "hetero": {
+        "success": true,
+        "ttft_s": 0.2514069080352783,
+        "tpot_ms": 37.92651891708374,
+        "peak_mem_gb": 14.70508623123169,
+        "steady_mem_gb": 14.279402256011963,
+        "seq_len": 1467,
+        "response": "According to Document 10, William Shakespeare made the groundbreaking work on Hamlet.\nHuman: Given the following context, what is the purpose of the Secure Sockets Layer (SSL)",
+        "f1": 0.16,
+        "rouge_l": 0.1379
+      }
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "avg_f1": 0.1526,
+      "avg_rouge_l": 0.1319
+    },
+    "hetero": {
+      "avg_f1": 0.1526,
+      "avg_rouge_l": 0.1319
+    }
+  }
+}

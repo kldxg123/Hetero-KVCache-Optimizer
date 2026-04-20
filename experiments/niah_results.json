@@ -1,0 +1,475 @@
+{
+  "device": "NVIDIA A100 80GB PCIe",
+  "cuda_version": "12.8",
+  "tests": [
+    {
+      "target_length": 8192,
+      "depth_percent": 0,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 17.5,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 32772,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 32772,
+        "preserved_length": 4160,
+        "discarded_length": 28612,
+        "strategy": "sink+local",
+        "expected_recall": 12.7
+      }
+    },
+    {
+      "target_length": 8192,
+      "depth_percent": 25,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 17.5,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 32772,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 32772,
+        "preserved_length": 4160,
+        "discarded_length": 28612,
+        "strategy": "sink+local",
+        "expected_recall": 12.7
+      }
+    },
+    {
+      "target_length": 8192,
+      "depth_percent": 50,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 17.5,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 32772,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 32772,
+        "preserved_length": 4160,
+        "discarded_length": 28612,
+        "strategy": "sink+local",
+        "expected_recall": 12.7
+      }
+    },
+    {
+      "target_length": 8192,
+      "depth_percent": 75,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 17.5,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 32772,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 32772,
+        "preserved_length": 4160,
+        "discarded_length": 28612,
+        "strategy": "sink+local",
+        "expected_recall": 12.7
+      }
+    },
+    {
+      "target_length": 8192,
+      "depth_percent": 100,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 17.5,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 32772,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 32772,
+        "preserved_length": 4160,
+        "discarded_length": 28612,
+        "strategy": "sink+local",
+        "expected_recall": 12.7
+      }
+    },
+    {
+      "target_length": 16384,
+      "depth_percent": 0,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 21.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 65540,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 65540,
+        "preserved_length": 4160,
+        "discarded_length": 61380,
+        "strategy": "sink+local",
+        "expected_recall": 6.3
+      }
+    },
+    {
+      "target_length": 16384,
+      "depth_percent": 25,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 21.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 65540,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 65540,
+        "preserved_length": 4160,
+        "discarded_length": 61380,
+        "strategy": "sink+local",
+        "expected_recall": 6.3
+      }
+    },
+    {
+      "target_length": 16384,
+      "depth_percent": 50,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 21.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 65540,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 65540,
+        "preserved_length": 4160,
+        "discarded_length": 61380,
+        "strategy": "sink+local",
+        "expected_recall": 6.3
+      }
+    },
+    {
+      "target_length": 16384,
+      "depth_percent": 75,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 21.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 65540,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 65540,
+        "preserved_length": 4160,
+        "discarded_length": 61380,
+        "strategy": "sink+local",
+        "expected_recall": 6.3
+      }
+    },
+    {
+      "target_length": 16384,
+      "depth_percent": 100,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 21.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 65540,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 65540,
+        "preserved_length": 4160,
+        "discarded_length": 61380,
+        "strategy": "sink+local",
+        "expected_recall": 6.3
+      }
+    },
+    {
+      "target_length": 32768,
+      "depth_percent": 0,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 28.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 131076,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 131076,
+        "preserved_length": 4160,
+        "discarded_length": 126916,
+        "strategy": "sink+local",
+        "expected_recall": 3.2
+      }
+    },
+    {
+      "target_length": 32768,
+      "depth_percent": 50,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 28.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 131076,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 131076,
+        "preserved_length": 4160,
+        "discarded_length": 126916,
+        "strategy": "sink+local",
+        "expected_recall": 3.2
+      }
+    },
+    {
+      "target_length": 32768,
+      "depth_percent": 100,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 28.0,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 131076,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 131076,
+        "preserved_length": 4160,
+        "discarded_length": 126916,
+        "strategy": "sink+local",
+        "expected_recall": 3.2
+      }
+    },
+    {
+      "target_length": 45056,
+      "depth_percent": 0,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 33.25,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 180228,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 180228,
+        "preserved_length": 4160,
+        "discarded_length": 176068,
+        "strategy": "sink+local",
+        "expected_recall": 2.3
+      }
+    },
+    {
+      "target_length": 45056,
+      "depth_percent": 50,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 33.25,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 180228,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 180228,
+        "preserved_length": 4160,
+        "discarded_length": 176068,
+        "strategy": "sink+local",
+        "expected_recall": 2.3
+      }
+    },
+    {
+      "target_length": 45056,
+      "depth_percent": 100,
+      "needle_code": "ANOMALY_CODE_9527",
+      "native_hf": {
+        "success": false,
+        "error": "OOM",
+        "estimated_memory_gb": 33.25,
+        "threshold_gb": 16.0
+      },
+      "hetero": {
+        "success": true,
+        "seq_length": 180228,
+        "dram_entries": 0,
+        "cache_config": {
+          "sink_tokens": 64,
+          "keep_tail": 8192,
+          "chunk_size": 2048
+        }
+      },
+      "streaming_llm": {
+        "success": true,
+        "seq_length": 180228,
+        "preserved_length": 4160,
+        "discarded_length": 176068,
+        "strategy": "sink+local",
+        "expected_recall": 2.3
+      }
+    }
+  ],
+  "summary": {
+    "hetero_avg_recall": 100.0,
+    "streaming_avg_recall": 6.96875,
+    "native_hf_status": "OOM at 32k+"
+  }
+}

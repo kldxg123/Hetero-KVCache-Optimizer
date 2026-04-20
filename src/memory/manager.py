@@ -1,0 +1,433 @@
+"""
+src/memory/manager.py
+======================
+HeteroKVManager: A Tiered Storage System for KV Cache Management.
+
+Presents KV cache as a heterogeneous memory hierarchy (HBM + DRAM) and provides
+a unified abstraction for allocation, update, compression, and retrieval.
+"""
+
+import gc
+import sys
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
+import torch
+
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from src.quantization.kv_compressor import KVCompressor
+from src.policy.prefetcher import AsyncPrefetcher
+
+
+class HeteroKVManager:
+    """
+    Tiered KV Cache Storage System.
+
+    Manages a heterogeneous memory hierarchy where hot KV tokens (Sink + recent Tail)
+    reside in HBM, while overflow tokens are transparently compressed and offloaded
+    to DRAM. This decouples the logical sequence length from the physical memory
+    footprint, enabling O(1) steady-state memory for autoregressive decoding.
+
+    Public API:
+      - allocate(layer_idx, seq_len, budget_tokens)
+      - update(layer_idx, key_states, value_states, mode, seq_offset)
+      - compress(layer_idx, device='DRAM')
+      - swap_in(layer_idx, chunk_key)
+      - get_hbm_kv(layer_idx)
+      - memory_summary()
+    """
+
+    def __init__(
+        self,
+        num_layers: int,
+        sink_tokens: int = 64,
+        hbm_budget_tokens: int = 8192,
+        device: str = "cuda",
+        enable_quant: bool = True,
+        enable_prefetch: bool = True,
+        group_size: int = 128,
+        bits: int = 4,
+        bandwidth_limiter=None,
+    ):
+        self.num_layers = num_layers
+        self.sink_tokens = sink_tokens
+        self.hbm_budget_tokens = hbm_budget_tokens
+        self.device = device
+        self.enable_quant = enable_quant
+        self.group_size = group_size
+        self.bits = bits
+        self._bandwidth_limiter = bandwidth_limiter
+
+        max_hbm = sink_tokens + hbm_budget_tokens
+
+        # HBM-resident physical pools: one slot per layer
+        self._key_cache: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._value_cache: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._seq_offsets: List[int] = [0] * num_layers  # logical start offset for each layer
+
+        # Compression engine
+        self._compressor = KVCompressor(group_size=group_size, bits=bits)
+
+        # Async prefetcher for DRAM -> HBM overlap
+        self._prefetcher: Optional[AsyncPrefetcher] = None
+        if enable_prefetch and torch.cuda.is_available():
+            self._prefetcher = AsyncPrefetcher(device=torch.device(device))
+
+        # DRAM storage table: {chunk_key: {"k_data", "k_scales", "k_zps",
+        #                                   "v_data", "v_scales", "v_zps"}}
+        self._dram_table: Dict[str, Dict[str, torch.Tensor]] = {}
+        self._eviction_counter = 0
+
+    # ------------------------------------------------------------------
+    # Tiered Storage API
+    # ------------------------------------------------------------------
+
+    def allocate(
+        self,
+        layer: int,
+        budget: Optional[int] = None,
+    ) -> bool:
+        """
+        Ensure the physical HBM pool for `layer` can accommodate up to
+        `budget` tokens. If budget is None, uses hbm_budget_tokens.
+
+        Returns True if the layer is ready for writes.
+        """
+        if layer < 0 or layer >= self.num_layers:
+            raise ValueError(f"Invalid layer {layer}, num_layers={self.num_layers}")
+        if budget is not None:
+            self.hbm_budget_tokens = budget
+        # Allocation is lazy in this implementation; pools are created on first update.
+        # Future extensions could pre-allocate fixed-size tensors here for true zero-fragmentation.
+        return True
+
+    def update(
+        self,
+        layer_idx: int,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        mode: str = "prefill",
+        seq_offset: int = 0,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Unified update entry for both prefill and decode modes.
+
+        Args:
+            layer_idx: Transformer layer index.
+            key_states:  New key tensor to integrate.
+            value_states: New value tensor to integrate.
+            mode:        Either "prefill" (seq_len > 1) or "decode" (seq_len == 1).
+            seq_offset:  Logical sequence offset for this update (used for RoPE alignment).
+
+        Returns:
+            (key_states, value_states) that should be presented to the attention kernel.
+            In prefill mode, this returns the *full* original tensors to maintain
+            FlashAttention compatibility (transient architecture).
+            In decode mode, this returns the *pruned* HBM-resident tensors.
+        """
+        if mode == "prefill":
+            return self._prefill_update(layer_idx, key_states, value_states, seq_offset)
+        elif mode == "decode":
+            return self._decode_update(layer_idx, key_states, value_states, seq_offset)
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+
+    def compress(self, layer: int, device: str = "DRAM") -> int:
+        """
+        Force-compress all HBM-resident tail tokens beyond sink_tokens for the given
+        layer and move them to the specified device tier.
+
+        Returns:
+            Number of tokens compressed.
+        """
+        if device.upper() != "DRAM":
+            raise NotImplementedError("Only DRAM compression is currently supported.")
+        k_cache = self._key_cache[layer]
+        v_cache = self._value_cache[layer]
+        if k_cache is None or k_cache.shape[-2] <= self.sink_tokens:
+            return 0
+
+        overflow = k_cache.shape[-2] - self.sink_tokens
+        k_sink = k_cache[..., : self.sink_tokens, :]
+        v_sink = v_cache[..., : self.sink_tokens, :]
+        k_tail = k_cache[..., self.sink_tokens :, :]
+        v_tail = v_cache[..., self.sink_tokens :, :]
+
+        self._evict_to_dram(layer, k_tail, v_tail)
+
+        self._key_cache[layer] = k_sink
+        self._value_cache[layer] = v_sink
+        return overflow
+
+    def swap_in(
+        self, layer_idx: int, chunk_key: str
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Swap a compressed chunk from DRAM back into HBM.
+
+        Returns:
+            (restored_k, restored_v) as BF16 tensors, or None if chunk_key missing.
+        """
+        if chunk_key not in self._dram_table:
+            return None
+
+        entry = self._dram_table.pop(chunk_key)
+
+        # Fast path: prefetch hit
+        if self._prefetcher is not None:
+            result = self._prefetcher.fetch_if_ready(chunk_key)
+            if result is not None:
+                prefetched_k, _ = result
+                q_v = entry["v_data"].to(self.device, non_blocking=True)
+                s_v = entry["v_scales"].to(self.device, non_blocking=True)
+                z_v = entry["v_zps"].to(self.device, non_blocking=True)
+                if self._bandwidth_limiter is not None:
+                    for t in (q_v, s_v, z_v):
+                        self._bandwidth_limiter.simulate_transfer(t)
+                torch.cuda.synchronize(self.device)
+                restored_v = self._compressor.decompress(q_v, s_v, z_v).to(torch.bfloat16)
+                return prefetched_k, restored_v
+
+        # Slow path: synchronous decompress
+        q_k = entry["k_data"].to(self.device, non_blocking=True)
+        s_k = entry["k_scales"].to(self.device, non_blocking=True)
+        z_k = entry["k_zps"].to(self.device, non_blocking=True)
+        q_v = entry["v_data"].to(self.device, non_blocking=True)
+        s_v = entry["v_scales"].to(self.device, non_blocking=True)
+        z_v = entry["v_zps"].to(self.device, non_blocking=True)
+        if self._bandwidth_limiter is not None:
+            for t in (q_k, s_k, z_k, q_v, s_v, z_v):
+                self._bandwidth_limiter.simulate_transfer(t)
+        torch.cuda.synchronize(self.device)
+        restored_k = self._compressor.decompress(q_k, s_k, z_k).to(torch.bfloat16)
+        restored_v = self._compressor.decompress(q_v, s_v, z_v).to(torch.bfloat16)
+        return restored_k, restored_v
+
+    def get_hbm_kv(self, layer_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Return the current HBM-resident KV tensors for the given layer."""
+        if self._key_cache[layer_idx] is None:
+            raise RuntimeError(f"Layer {layer_idx} has not been allocated yet.")
+        return self._key_cache[layer_idx], self._value_cache[layer_idx]
+
+    def get_seq_offset(self, layer_idx: int) -> int:
+        """Return the logical sequence offset maintained for RoPE alignment."""
+        return self._seq_offsets[layer_idx]
+
+    def schedule_prefetch(self, chunk_key: str) -> None:
+        """Submit an asynchronous DRAM -> HBM prefetch task."""
+        if self._prefetcher is None or chunk_key not in self._dram_table:
+            return
+        entry = self._dram_table[chunk_key]
+        prefetch_entry = {
+            "k_data": entry["k_data"],
+            "k_scales": entry["k_scales"],
+            "k_zps": entry["k_zps"],
+            "v_data": entry["v_data"],
+            "v_scales": entry["v_scales"],
+            "v_zps": entry["v_zps"],
+        }
+        self._prefetcher.submit_prefetch_task(chunk_key, prefetch_entry, self._compressor)
+
+    def memory_summary(self) -> Dict[str, Any]:
+        """Return a snapshot of HBM and DRAM consumption."""
+        hbm_tokens = 0
+        for k in self._key_cache:
+            if k is not None:
+                hbm_tokens += k.shape[-2]
+
+        dram_bytes = 0
+        for entry in self._dram_table.values():
+            for t in entry.values():
+                dram_bytes += t.element_size() * t.nelement()
+
+        return {
+            "hbm_tokens": hbm_tokens,
+            "dram_entries": len(self._dram_table),
+            "dram_bytes": dram_bytes,
+            "max_hbm_tokens": self.max_hbm_tokens(),
+        }
+
+    def max_hbm_tokens(self) -> int:
+        return self.sink_tokens + self.hbm_budget_tokens
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _prefill_update(
+        self,
+        layer_idx: int,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        seq_offset: int = 0,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Transient interception architecture:
+          1. Internally retain only Sink + Tail in the HBM physical pool.
+          2. Evict overflow tail to DRAM via 4-bit quantization.
+          3. Return the FULL original tensors to preserve FlashAttention compatibility.
+        """
+        new_len = key_states.shape[-2]
+        max_hbm = self.max_hbm_tokens()
+
+        # Robustness: auto-expand internal lists if num_layers was under-estimated
+        while len(self._key_cache) <= layer_idx:
+            self._key_cache.append(None)
+            self._value_cache.append(None)
+            self._seq_offsets.append(0)
+
+        if self._key_cache[layer_idx] is None:
+            # First write: crop to sink + tail
+            sink_amt = min(new_len, self.sink_tokens)
+            tail_amt = min(new_len - sink_amt, self.hbm_budget_tokens)
+
+            k_sink = key_states[..., :sink_amt, :]
+            v_sink = value_states[..., :sink_amt, :]
+
+            if tail_amt > 0:
+                k_tail = key_states[..., -tail_amt:, :]
+                v_tail = value_states[..., -tail_amt:, :]
+                self._key_cache[layer_idx] = torch.cat([k_sink, k_tail], dim=-2)
+                self._value_cache[layer_idx] = torch.cat([v_sink, v_tail], dim=-2)
+            else:
+                self._key_cache[layer_idx] = k_sink
+                self._value_cache[layer_idx] = v_sink
+        else:
+            # Append and maintain rolling window
+            new_k = torch.cat([self._key_cache[layer_idx], key_states], dim=-2)
+            new_v = torch.cat([self._value_cache[layer_idx], value_states], dim=-2)
+            cur_len = new_k.shape[-2]
+
+            if cur_len > max_hbm:
+                overflow = cur_len - max_hbm
+                evict_start = self.sink_tokens
+                evict_end = evict_start + overflow
+
+                if self.enable_quant:
+                    self._evict_to_dram(
+                        layer_idx,
+                        new_k[..., evict_start:evict_end, :],
+                        new_v[..., evict_start:evict_end, :],
+                    )
+
+                self._key_cache[layer_idx] = torch.cat(
+                    [new_k[..., : self.sink_tokens, :], new_k[..., evict_end:, :]],
+                    dim=-2,
+                )
+                self._value_cache[layer_idx] = torch.cat(
+                    [new_v[..., : self.sink_tokens, :], new_v[..., evict_end:, :]],
+                    dim=-2,
+                )
+            else:
+                self._key_cache[layer_idx] = new_k
+                self._value_cache[layer_idx] = new_v
+
+            del new_k, new_v
+
+        self._seq_offsets[layer_idx] = seq_offset + new_len
+
+        # Return full tensors to keep FlashAttention kernels happy
+        return key_states, value_states
+
+    def _decode_update(
+        self,
+        layer_idx: int,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        seq_offset: int = 0,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Decode residency: append new token to the physical pool and maintain
+        the rolling window in-place.
+        """
+        max_hbm = self.max_hbm_tokens()
+
+        # Robustness: auto-expand internal lists if num_layers was under-estimated
+        while len(self._key_cache) <= layer_idx:
+            self._key_cache.append(None)
+            self._value_cache.append(None)
+            self._seq_offsets.append(0)
+
+        k_cache = self._key_cache[layer_idx]
+        v_cache = self._value_cache[layer_idx]
+
+        if k_cache is None:
+            self._key_cache[layer_idx] = key_states
+            self._value_cache[layer_idx] = value_states
+            self._seq_offsets[layer_idx] = seq_offset + 1
+            return key_states, value_states
+
+        cur_len = k_cache.shape[-2]
+        if cur_len < max_hbm:
+            new_k = torch.cat([k_cache, key_states], dim=-2)
+            new_v = torch.cat([v_cache, value_states], dim=-2)
+        else:
+            # In-place rolling: evict oldest tail token, append new token
+            sink_k = k_cache[..., : self.sink_tokens, :]
+            sink_v = v_cache[..., : self.sink_tokens, :]
+            old_tail_k = k_cache[..., self.sink_tokens + 1 :, :]
+            old_tail_v = v_cache[..., self.sink_tokens + 1 :, :]
+            new_k = torch.cat([sink_k, old_tail_k, key_states], dim=-2)
+            new_v = torch.cat([sink_v, old_tail_v, value_states], dim=-2)
+
+        self._key_cache[layer_idx] = new_k
+        self._value_cache[layer_idx] = new_v
+        self._seq_offsets[layer_idx] = seq_offset + 1
+
+        return self._key_cache[layer_idx], self._value_cache[layer_idx]
+
+    def _evict_to_dram(
+        self,
+        layer_idx: int,
+        k_chunk: torch.Tensor,
+        v_chunk: torch.Tensor,
+    ) -> None:
+        """Compress a KV chunk and move it to DRAM (pinned CPU memory)."""
+        chunk_key = f"l{layer_idx}_e{self._eviction_counter}"
+
+        q_k, k_scales, k_zps = self._compressor.compress(k_chunk)
+        q_v, v_scales, v_zps = self._compressor.compress(v_chunk)
+
+        entry = {
+            "k_data": q_k.cpu().pin_memory(),
+            "k_scales": k_scales.cpu().pin_memory(),
+            "k_zps": k_zps.cpu().pin_memory(),
+            "v_data": q_v.cpu().pin_memory(),
+            "v_scales": v_scales.cpu().pin_memory(),
+            "v_zps": v_zps.cpu().pin_memory(),
+        }
+        if self._bandwidth_limiter is not None:
+            for t in entry.values():
+                self._bandwidth_limiter.simulate_transfer(t)
+        self._dram_table[chunk_key] = entry
+
+        if layer_idx == 0:
+            tokens = k_chunk.shape[-2]
+            self._eviction_counter += 1
+            print(
+                f"  [Evict->DRAM] layer=0 chunk={chunk_key} "
+                f"tokens={tokens} DRAM_entries={len(self._dram_table)}"
+            )
+
+
+if __name__ == "__main__":
+    manager = HeteroKVManager(num_layers=4, sink_tokens=64, hbm_budget_tokens=256)
+    for layer in range(4):
+        manager.allocate(layer, budget=512)
+
+    # Prefill simulation
+    k = torch.randn(1, 8, 512, 128, dtype=torch.bfloat16, device="cuda")
+    v = torch.randn(1, 8, 512, 128, dtype=torch.bfloat16, device="cuda")
+    out_k, out_v = manager.update(0, k, v, mode="prefill")
+    print("Prefill output shape:", out_k.shape, out_v.shape)
+    print("HBM resident shape:", manager.get_hbm_kv(0)[0].shape)
+    print("Memory summary:", manager.memory_summary())
+
+    # Decode simulation
+    k1 = torch.randn(1, 8, 1, 128, dtype=torch.bfloat16, device="cuda")
+    v1 = torch.randn(1, 8, 1, 128, dtype=torch.bfloat16, device="cuda")
+    out_k, out_v = manager.update(0, k1, v1, mode="decode")
+    print("Decode output shape:", out_k.shape)

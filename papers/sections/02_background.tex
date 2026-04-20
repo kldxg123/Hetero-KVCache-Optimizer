@@ -1,0 +1,25 @@
+\section{Background and Motivation}
+\label{sec:background}
+
+\subsection{The Dilemma of FlashAttention on Edge}
+Modern LLM inference heavily relies on \textit{FlashAttention}~\cite{dao2022flashattention} to achieve $O(N)$ time complexity and reduced memory IO. However, FlashAttention enforces strict structural constraints on tensor memory layout. Specifically, to leverage the SRAM-based tiling optimization, the input tensors must be contiguous and follow specific dimensional alignments (e.g., head dimension $d=64, 128$).
+
+Recent systems have explored various approaches to memory-constrained inference. \textit{FlexGen}~\cite{sheng2023flexgen} proposes offloading-based scheduling for throughput-oriented batch processing, trading latency for memory capacity. \textit{vLLM}~\cite{kwon2023efficient} introduces PagedAttention for dynamic memory allocation but maintains all KV tensors in HBM. \textit{KIVI}~\cite{liu2024kivi} demonstrates that KV cache can be aggressively quantized with minimal accuracy loss.
+
+In edge scenarios, when we attempt to implement \textit{Chunked Prefill} to save peak memory, the standard HuggingFace (HF) or PyTorch implementations often split the long sequence into non-contiguous blocks. This causes a "Flash-Fallback" effect: the kernel fails the structural check and falls back to the standard Attention implementation, which exhibits $O(N^2)$ space complexity. For a 32K sequence on a Qwen2.5-7B model, this fallback can trigger a transient memory spike exceeding \textbf{30GB}, instantly killing the process on a 16GB device.
+
+\subsection{Memory Fragmentation in Dynamic KV Cache}
+Standard LLM engines treat the KV Cache as a dynamically growing list of tensors. In Python-based frameworks, each generation step involves appending a new token tensor to the existing cache via \texttt{torch.cat}. This approach has two fatal flaws for edge devices:
+\begin{enumerate}
+    \item \textbf{Frequent Re-allocation}: As the list grows, the memory allocator must frequently find larger contiguous blocks, leading to massive CPU-GPU synchronization overhead.
+    \item \textbf{External Fragmentation}: Even if the total free VRAM is sufficient (e.g., 2GB free), it may be scattered into millions of small, non-contiguous "holes." When the model requests a single large block for visual feature maps from multiple video frames, the allocator returns an \textit{Out of Memory} error despite the theoretical availability of space.
+\end{enumerate}
+
+\subsection{Attention Sink and Information Loss}
+Prior works like \textit{StreamingLLM} attempt to solve the $O(N)$ growth by simply evicting old KV pairs. However, for LLMs like Qwen2.5-7B, simple eviction is destructive. LLMs rely heavily on:
+\begin{itemize}
+    \item \textbf{Attention Sinks}: The initial tokens (e.g., BOS or system prompts) which collect disproportionate attention scores.
+    \item \textbf{RoPE Consistency}: Rotary Position Embeddings (RoPE) require strict relative distance alignment. Naive eviction shifts the relative positions, causing the model to lose the ability to locate specific timestamps in long videos.
+\end{itemize}
+
+This motivates the need for a system that can maintain the "illusion" of a full KV Cache for the hardware while physically compressing the memory footprint and eliminating fragmentation.

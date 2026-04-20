@@ -1,0 +1,47 @@
+# Model files (do NOT upload)
+models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.gguf
+*.ckpt
+
+# HuggingFace cache
+huggingface_cache/
+
+# IDE / tools
+.aider*
+.kimi/
+__pycache__/
+*.pyc
+
+# Large media files
+*.mp4
+*.avi
+*.mov
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Logs
+*.log
+nohup.out
+
+# Build artifacts / archives
+*.tar.gz
+*.zip
+*.deb
+
+# Random generated files
+=0.*
+1.py
+dummy_*.mp4
+
+# Data / cache
+data/
+
+# OS files
+.DS_Store

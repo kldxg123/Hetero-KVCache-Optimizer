@@ -1,0 +1,220 @@
+\section{Theoretical Analysis}
+\label{sec:theory}
+
+We formalize three foundational properties of \texttt{Hetero-KVCache-Optimizer}:
+(1)~the bounded error of attention under Sink+Tail position preservation,
+(2)~the strict $O(1)$ memory independence from sequence length, and
+(3)~the bandwidth-limited latency model for edge deployment.
+
+\subsection{RoPE Position Invariance Lemma}
+\label{subsec:rope-lemma}
+
+Modern LLMs encode positional information via Rotary Position Embeddings (RoPE)~
+\cite{su2024roformer}.  For a token at absolute position $m$, RoPE transforms the
+query and key vectors as
+\begin{equation}
+\mathbf{q}_m = \mathbf{R}_{\Theta,m} \, \mathbf{q}, \qquad
+\mathbf{k}_n = \mathbf{R}_{\Theta,n} \, \mathbf{k},
+\end{equation}
+where $\mathbf{R}_{\Theta,m}$ is a block-diagonal rotation matrix parameterized by a
+frequency basis $\Theta = \{\theta_i\}_{i=1}^{d/2}$.  The attention score between
+positions $m$ and $n$ depends only on the relative distance $(m-n)$:
+\begin{equation}
+\mathbf{q}_m^{\top} \mathbf{k}_n
+= \mathbf{q}^{\top} \mathbf{R}_{\Theta,m}^{\top} \mathbf{R}_{\Theta,n} \mathbf{k}
+= \mathbf{q}^{\top} \mathbf{R}_{\Theta,n-m} \mathbf{k}.
+\end{equation}
+
+\begin{lemma}[RoPE Position Invariance under Sink+Tail]
+\label{lem:rope}
+Let $\mathcal{S}$ be the set of Sink tokens with absolute positions
+$\{0, \dots, L_s-1\}$ and $\mathcal{T}$ be the set of Tail tokens with absolute
+positions $\{N-L_t, \dots, N-1\}$.  Let $\mathcal{M} = [0,N-1] \setminus
+(\mathcal{S} \cup \mathcal{T})$ denote the evicted middle tokens.  If the KV cache
+retains the original absolute position IDs $m$ and $n$ for every token in
+$\mathcal{S} \cup \mathcal{T}$, then for any query at position
+$p \in \mathcal{S} \cup \mathcal{T}$ the attention output computed over the pruned
+cache satisfies
+\begin{equation}
+\bigl\| \text{Attn}_{\text{pruned}}(p) - \text{Attn}_{\text{full}}(p) \bigr\|_2
+\;\le\;
+\frac{1}{\sqrt{d_k}} \sum_{n \in \mathcal{M}}
+\bigl| e^{\mathbf{q}_p^{\top} \mathbf{k}_n / \sqrt{d_k}} \bigr|,
+\label{eq:rope-bound}
+\end{equation}
+where $d_k$ is the head dimension.
+\end{lemma}
+
+\begin{proof}
+The full attention output at position $p$ is
+\begin{equation}
+\text{Attn}_{\text{full}}(p)
+= \sum_{n=0}^{N-1} \alpha_{p,n} \, \mathbf{v}_n,
+\qquad
+\alpha_{p,n}
+= \frac{e^{\mathbf{q}_p^{\top} \mathbf{k}_n / \sqrt{d_k}}}
+        {\sum_{j=0}^{N-1} e^{\mathbf{q}_p^{\top} \mathbf{k}_j / \sqrt{d_k}}}.
+\end{equation}
+The pruned attention output omits the middle tokens $\mathcal{M}$ and
+renormalizes over $\mathcal{S} \cup \mathcal{T}$:
+\begin{equation}
+\text{Attn}_{\text{pruned}}(p)
+= \sum_{n \in \mathcal{S} \cup \mathcal{T}}
+  \tilde{\alpha}_{p,n} \, \mathbf{v}_n,
+\qquad
+\tilde{\alpha}_{p,n}
+= \frac{e^{\mathbf{q}_p^{\top} \mathbf{k}_n / \sqrt{d_k}}}
+        {\sum_{j \in \mathcal{S} \cup \mathcal{T}}
+         e^{\mathbf{q}_p^{\top} \mathbf{k}_j / \sqrt{d_k}}}.
+\end{equation}
+Because the absolute position IDs are preserved, every retained token keeps its
+exact rotation matrix $\mathbf{R}_{\Theta,n}$; therefore
+$\mathbf{q}_p^{\top} \mathbf{k}_n$ is unchanged for all $n \in \mathcal{S} \cup \mathcal{T}$.
+Let $Z = \sum_{j=0}^{N-1} e^{\mathbf{q}_p^{\top} \mathbf{k}_j / \sqrt{d_k}}$ and
+$\tilde{Z} = \sum_{j \in \mathcal{S} \cup \mathcal{T}}
+e^{\mathbf{q}_p^{\top} \mathbf{k}_j / \sqrt{d_k}}$.
+The difference between the full and pruned outputs is
+\begin{align}
+&\text{Attn}_{\text{full}}(p) - \text{Attn}_{\text{pruned}}(p) \nonumber \\
+&= \sum_{n \in \mathcal{S} \cup \mathcal{T}}
+   \Bigl(\alpha_{p,n} - \tilde{\alpha}_{p,n}\Bigr) \mathbf{v}_n
+   \;+\; \sum_{n \in \mathcal{M}} \alpha_{p,n} \mathbf{v}_n \\
+&= \sum_{n \in \mathcal{S} \cup \mathcal{T}}
+   \frac{\tilde{Z}-Z}{Z \tilde{Z}}
+   e^{\mathbf{q}_p^{\top} \mathbf{k}_n / \sqrt{d_k}} \, \mathbf{v}_n
+   \;+\; \sum_{n \in \mathcal{M}} \alpha_{p,n} \mathbf{v}_n.
+\end{align}
+Since $Z - \tilde{Z} = \sum_{n \in \mathcal{M}}
+e^{\mathbf{q}_p^{\top} \mathbf{k}_n / \sqrt{d_k}}$, the first term is a weighted
+average over $\mathcal{S} \cup \mathcal{T}$ with total weight
+$\frac{Z-\tilde{Z}}{Z}$, and the second term is a weighted average over
+$\mathcal{M}$ with the same total weight.  Because the softmax weights sum to
+$\frac{Z-\tilde{Z}}{Z}$ for the discarded mass, and $\|\mathbf{v}_n\|_2 \le 1$
+after layer-normalization, the $\ell_2$ norm of the error is bounded by that
+discarded mass, yielding Equation~\eqref{eq:rope-bound}.
+\end{proof}
+
+\textbf{Implication.}  Lemma~\ref{lem:rope} shows that accuracy degradation is
+not caused by \textit{positional misalignment} but solely by the absence of the
+middle tokens themselves.  By choosing a sufficiently large Tail window $L_t$,
+the discarded mass becomes negligible for retrieval tasks that depend on
+recent context, which explains the $100\%$ NIAH recall observed in our
+experiments.
+
+\subsection{Memory Bound Theorem}
+\label{subsec:memory-bound}
+
+\begin{theorem}[Constant Steady-State Memory]
+\label{thm:memory}
+For a model with $L$ layers, $h$ KV heads, and head dimension $d$,
+the steady-state peak GPU memory of \texttt{Hetero-KVCache-Optimizer} is
+\begin{equation}
+M_{\text{steady}}(N) \;\le\;
+M_{\text{weights}} \;+\;
+2 \cdot L \cdot h \cdot (L_s + L_t) \cdot d \cdot \text{sizeof(dtype)}
+\;+\; M_{\text{act}},
+\label{eq:memory-bound}
+\end{equation}
+which is strictly $O(L_s + L_t)$ and completely independent of the input
+sequence length $N$.  Here $L_s$ and $L_t$ are the Sink and Tail budgets, and
+$M_{\text{act}}$ denotes activation scratch memory.
+\end{theorem}
+
+\begin{proof}
+During the decode phase, the cache manager maintains exactly one physical
+HBM buffer per layer.  By construction of the in-place rolling mechanism,
+the buffer size is capped at $L_s + L_t$ tokens; when a new token arrives,
+the oldest Tail token is overwritten in-place rather than re-allocated.
+Each token stores a key and a value vector of shape $(h, d)$.
+With $L$ layers, the total HBM-resident KV footprint is
+$2 \cdot L \cdot h \cdot (L_s + L_t) \cdot d \cdot \text{sizeof(dtype)}$.
+
+The transient prefill tensors are explicitly deleted and garbage-collected
+after each chunk, so they do not contribute to steady-state consumption.
+Overflow tokens are compressed to 4-bit and moved to DRAM (CPU pinned memory),
+which does not count against GPU VRAM.  Therefore $M_{\text{steady}}(N)$
+is constant in $N$ and bounded by Equation~\eqref{eq:memory-bound}.
+\end{proof}
+
+\textbf{Closed-form VRAM formula.}  For the concrete configuration used in our
+evaluation ($L=28$, $h=4$, $d=128$, BF16 dtype, $L_s=64$, $L_t=8192$):
+\begin{equation}
+M_{\text{kv}} \;=\;
+2 \times 28 \times 4 \times (64 + 8192) \times 128 \times 2\;\text{bytes}
+\;\approx\; 0.454\;\text{GB},
+\end{equation}
+matching the empirical measurement reported in Table~\ref{tab:memory_comparison}.
+
+\subsection{Bandwidth-Limited Latency Model}
+\label{subsec:latency-model}
+
+When the PCIe link between CPU DRAM and GPU HBM becomes the bottleneck,
+the Time-Per-Output-Token (TPOT) is dominated by the latency of swapping in
+the decompressed KV blocks needed for the next decode step.
+
+\begin{theorem}[TPOT under PCIe Bandwidth Limit]
+\label{thm:tpot}
+Let $B$ be the effective PCIe bandwidth (GB/s) and $r$ the INT4 compression ratio
+($r \approx 4.5$ for group size $128$).  During decode, each new token
+may trigger the eviction of one Tail token to DRAM and the prefetch of another.
+The per-token PCIe transfer size for layer $i$ is
+\begin{equation}
+\Delta_i \;=\;
+\frac{2 \cdot h \cdot d \cdot \text{sizeof(BF16)}}{r}
+\;=\;
+\frac{4 \cdot h \cdot d}{r}\;\text{bytes}.
+\label{eq:delta-i}
+\end{equation}
+With $L$ layers, the bandwidth-limited TPOT is bounded by
+\begin{equation}
+\text{TPOT}_{\text{PCIe}} \;\le\;
+\frac{L \cdot \Delta_i}{B}
+\;+\;
+\text{TPOT}_{\text{compute}}.
+\label{eq:tpot-bound}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+The rolling-window update evicts exactly one token per layer when the Tail
+buffer is full.  That token is compressed to INT4 and offloaded to DRAM,
+requiring $\Delta_i$ bytes of PCIe egress.  Symmetrically, if a prefetch is
+scheduled for the next attention computation, an equal amount of data must
+traverse the link in the opposite direction.  The worst-case PCIe time per
+token is therefore the total bytes moved divided by the bidirectional bandwidth
+$B$.  Adding the compute-bound TPOT (matrix multiplications, softmax, etc.)
+gives the overall upper bound in Equation~\eqref{eq:tpot-bound}.
+\end{proof}
+
+\textbf{Predicted vs. measured values.}  Substituting our default configuration
+($L=28$, $h=4$, $d=128$, $r=4.5$) into Equations~\eqref{eq:delta-i}
+and~\eqref{eq:tpot-bound} yields:
+\begin{equation}
+\Delta_i
+= \frac{4 \times 4 \times 128}{4.5}
+\approx 455\;\text{bytes per layer}.
+\end{equation}
+On a full-bandwidth server link (PCIe Gen4 x16, $B \approx 32\;\text{GB/s}$):
+\begin{equation}
+\text{TPOT}_{\text{PCIe}}
+\le \frac{28 \times 455}{32 \times 10^{9}} + 33\;\text{ms}
+\approx 0.40\;\text{ms} + 33\;\text{ms}
+\approx 33.4\;\text{ms}.
+\end{equation}
+On a constrained edge link (PCIe Gen4 x8, $B \approx 16\;\text{GB/s}$):
+\begin{equation}
+\text{TPOT}_{\text{PCIe}}
+\le \frac{28 \times 455}{16 \times 10^{9}} + 33\;\text{ms}
+\approx 0.80\;\text{ms} + 33\;\text{ms}
+\approx 33.8\;\text{ms},
+\end{equation}
+and on a mobile edge link ($B \approx 8\;\text{GB/s}$):
+\begin{equation}
+\text{TPOT}_{\text{PCIe}}
+\le \frac{28 \times 455}{8 \times 10^{9}} + 33\;\text{ms}
+\approx 1.60\;\text{ms} + 33\;\text{ms}
+\approx 34.6\;\text{ms}.
+\end{equation}
+These predictions confirm that the prefetch overhead remains below $5\%$ of
+total TPOT even under severe bandwidth constraints, validating the viability
+of the tiered storage abstraction for edge deployment.

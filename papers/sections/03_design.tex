@@ -1,0 +1,58 @@
+\section{Design of Hetero-KVCache-Optimizer}
+\label{sec:design}
+
+The core philosophy of \texttt{Hetero-KVCache-Optimizer} is to decouple the \textit{logical computation graph} from the \textit{physical memory layout}. This allows the engine to perform full-sequence attention during prefill while maintaining a strictly bounded memory footprint during decoding, even with visual tokens from multiple video frames.
+
+\subsection{Transient Cache Interception}
+To bypass the "Flash-Fallback" problem, we design a transient interception layer[cite: 3]. Our system treats the prefill KV tensors as \textit{short-lived (transient)} activations[cite: 4].
+
+% --- Figure 1 Placeholder: System Architecture ---
+\begin{figure}[htbp]
+  \centering
+  % Replace filename with actual figure name after generation
+  \includegraphics[width=\linewidth]{figures/system_architecture.png}
+  \caption{Overall Architecture of Hetero-KVCache-Optimizer. The Transient Interceptor hooks the prefill stream to extract persistent KV tokens while maintaining FlashAttention compatibility[cite: 5].}
+  \label{fig:arch}
+\end{figure}
+
+\begin{algorithm}[h]
+\caption{Transient Interception \& Pruning}
+\label{alg:transient}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} Full input sequence $X_{1 \dots N}$
+\STATE \textbf{Output:} Optimized KV Pool $\mathcal{P}$, Hidden State $H$
+\STATE $K_{full}, V_{full} \gets \text{Prefill}(X_{1 \dots N})$ 
+\STATE $H \gets \text{FlashAttention}(Q, K_{full}, V_{full})$ 
+\STATE // \textit{Extraction and Immediate GC}
+\STATE $\mathcal{S} \gets \text{ExtractSinks}(K_{full}, V_{full}, \text{count}=64)$
+\STATE $\mathcal{T} \gets \text{ExtractTail}(K_{full}, V_{full}, \text{count}=8192)$
+\STATE $\mathcal{P}.\text{Update}(\mathcal{S} \cup \mathcal{T})$ [cite: 5]
+\STATE \textbf{Free}($K_{full}, V_{full}$) \COMMENT{Immediate GC to reclaim peak VRAM}
+\RETURN $H, \mathcal{P}$
+\end{algorithmic}
+\end{algorithm}
+
+The massive $K_{full}$ and $V_{full}$ tensors only exist during the forward pass. Once computed, the system "harvests" essential Sinks and Tail tokens, allowing explicit \texttt{del} operations and \texttt{gc.collect()} to reclaim gigabytes of memory immediately.
+
+\subsection{Static Zero-Fragmentation Pool}
+To eliminate Python's dynamic allocation overhead, we implement a \textbf{Static Physical Pool}[cite: 8]. We pre-allocate a contiguous VRAM block upon initialization[cite: 9].
+
+% --- Figure 2 Placeholder: Memory Flow ---
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/memory_pool_mechanism.png}
+  \caption{Static Memory Pool with In-place Shift Mechanism. The layout remains constant throughout the 70k token process to eliminate external fragmentation[cite: 10, 12].}
+  \label{fig:memory}
+\end{figure}
+
+Instead of \texttt{torch.cat}, we use an \textbf{In-place Shift} mechanism[cite: 10, 11]. When the tail buffer is full, we perform a pointer-based shift or circular indexing[cite: 12]:
+\begin{equation}
+\text{Index}_{phys} = (\text{Index}_{logical} + \text{Offset}) \pmod{L_{max}}
+\end{equation}
+
+\subsection{Strict Mask \& RoPE Alignment}
+Reducing the KV Cache typically destroys relative distance in RoPE[cite: 13]. We implement a \textbf{Coordinate Re-mapping} strategy to maintain 100\% accuracy[cite: 14]:
+\begin{itemize}
+    \item \textbf{Attention Mask Synchronization}: Blocks attention to evicted middle tokens while maintaining causality[cite: 15].
+    \item \textbf{RoPE Preservation}: Caches original $sin/cos$ values alongside KV pairs to retain absolute positional information.
+\end{itemize}

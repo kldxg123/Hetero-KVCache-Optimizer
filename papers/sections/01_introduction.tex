@@ -1,0 +1,39 @@
+\section{Introduction}
+
+Multimodal Large Language Models (MLLMs) have demonstrated remarkable capabilities in understanding complex long-video contexts. Yet deploying these models on edge devices remains fundamentally bottlenecked by the staggering memory requirements of the Key-Value (KV) Cache. In scenarios involving 32K+ context tokens, the KV Cache alone can exceed 10~GB, far surpassing the available capacity when combined with model weights on standard consumer GPUs (16~GB VRAM).
+
+The root cause is deeper than mere tensor size: modern inference engines treat the KV Cache as a monolithic, ever-growing activation buffer---a design pattern inherited from the training era. This single-tier, allocate-on-append strategy is unsustainable for edge hardware. We argue that KV Cache management should be re-conceptualized as a \textbf{tiered storage system problem}: hot tokens must reside in fast HBM, cold tokens should be transparently compressed and migrated to slower but abundant DRAM, and the prefill-decode transition demands a fundamentally different memory contract than training. Treating transient and static memory differently is not merely an optimization trick; it is a \textbf{fundamental systems insight} that enables long-context inference on memory-constrained devices.
+
+The primary challenge lies in the inherent $O(N)$ scaling of the KV Cache. For a standard 7B-parameter model utilizing Multi-Head Attention (MHA) with 28 heads and 4096 hidden dimensions, storing KV tensors in FP16 for a 45K sequence would require:
+\begin{equation}
+2 \times 45{,}000 \times 28 \times 4096 \times 2\,\text{bytes} \approx 20.6\,\text{GB}
+\end{equation}
+Even with Grouped Query Attention (GQA), the memory growth remains linear and quickly exhausts edge device limits when scaling to $>$100K contexts.
+
+Existing approaches present unsatisfactory trade-offs:
+\begin{itemize}
+    \item \textbf{StreamingLLM}~\cite{xiao2023streamingllm} retains only Sink tokens (fixed attention anchors) and a local window, discarding all intermediate tokens. While achieving $O(1)$ GPU memory, it suffers severe accuracy degradation for information located in discarded regions.
+    \item \textbf{vLLM PagedAttention}~\cite{kwon2023efficient} enables dynamic memory allocation but maintains all KV tensors in HBM, limiting maximum sequence length.
+    \item \textbf{H2O}~\cite{zhang2023h2o} and similar eviction-based methods require online computation of attention scores, introducing significant computational overhead.
+\end{itemize}
+
+To address these limitations, we propose \textbf{Hetero-KVCache-Optimizer}, a hierarchical KV Cache management system that breaks the linear memory wall while preserving full retrieval accuracy. Our key insight is twofold: (1)~during prefill, full-sequence attention is necessary to maintain precision, but the transient KV tensors can be immediately reclaimed; (2)~during decoding, only a fixed subset of ``Sinks'' and ``Tail'' tokens is required for HBM residence, with the remainder compressible to 4-bit and offloaded to DRAM.
+
+Our system features three core contributions that collectively enable sub-linear memory scaling:
+
+\begin{itemize}
+    \item \textbf{Transient-to-Static Storage Contract}: We introduce a novel architectural pattern that decouples the logical computation graph from the physical memory layout. The prefill engine computes on full tensors (satisfying FlashAttention~\cite{dao2022flashattention}'s dimension requirements) while asynchronously extracting only essential Sink (64) and Tail (8192) tokens to a static buffer. The massive transient activation memory is immediately reclaimed via explicit tensor deletion and garbage collection.
+
+    \item \textbf{4-Bit Hierarchical Compression}: Unlike eviction-based methods that permanently discard tokens, we apply group-wise asymmetric INT4 quantization (72\% compression ratio) to offload overflow KV tensors from HBM to DRAM. This preserves the ability to reconstruct any portion of the sequence when needed, enabling a true two-tier storage hierarchy.
+
+    \item \textbf{In-Place Rolling with Zero Fragmentation}: We bypass Python's dynamic allocation overhead by maintaining a contiguous physical memory pool. An in-place shift mechanism updates token positions without expensive re-allocation or memory fragmentation, reducing the steady-state physical footprint to a strict $O(1)$ bound.
+\end{itemize}
+
+\textbf{Key Results.} Evaluated on Qwen2-VL-7B-Instruct (4-bit NF4) with multimodal inputs up to 12K tokens, Hetero-KV achieves:
+\begin{itemize}
+    \item \textbf{Strictly Bounded Memory Footprint}: Hetero-KV maintains near-constant VRAM ($\sim$0.35~GB steady-state, 2.65~GB peak) across 4K--12K multimodal tokens, while native encounters OOM beyond 8K.
+    \item \textbf{100\% NIAH Recall}: Perfect accuracy on Needle-in-a-Haystack tests across all depths and lengths with multimodal contexts.
+    \item \textbf{12K+ Multimodal Token Survival}: Successfully processes 12K+ multimodal tokens within 16~GB VRAM where the native baseline fails with OOM.
+\end{itemize}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:background} reviews related work in KV Cache optimization. Section~\ref{sec:design} details the Hetero-KV architecture. Section~\ref{sec:evaluation} presents comprehensive experimental results. Section~\ref{sec:theory} formalizes the theoretical guarantees. Section~\ref{sec:conclusion} concludes with future directions.

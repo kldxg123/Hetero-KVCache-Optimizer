@@ -1,0 +1,46 @@
+{
+  "model_name": "Qwen2.5-7B",
+  "model_path": "models/Qwen2.5-7B-Instruct",
+  "device": "NVIDIA A100 80GB PCIe",
+  "tests": [
+    {
+      "name": "4K_context",
+      "target_tokens": 4096,
+      "actual_tokens": 4224,
+      "hetero": {
+        "success": true,
+        "ttft": 17.477919578552246,
+        "tpot": 0.07931647300720215,
+        "peak_memory_gb": 0.5801563262939453,
+        "steady_memory_gb": 0.0003466606140136719,
+        "seq_length": 4229,
+        "dram_entries": 0
+      },
+      "native": {
+        "success": true,
+        "ttft": 0.43686819076538086,
+        "tpot": 0.05059657096862793,
+        "peak_memory_gb": 1.1976118087768555,
+        "steady_memory_gb": 0.0003466606140136719
+      }
+    },
+    {
+      "name": "8K_context",
+      "target_tokens": 8192,
+      "actual_tokens": 8320,
+      "hetero": {
+        "success": true,
+        "ttft": 28.84307622909546,
+        "tpot": 0.05299077033996582,
+        "peak_memory_gb": 0.5802173614501953,
+        "steady_memory_gb": 0.0004076957702636719,
+        "seq_length": 8325,
+        "dram_entries": 28
+      },
+      "native": {
+        "skipped": true,
+        "reason": "expected OOM"
+      }
+    }
+  ]
+}

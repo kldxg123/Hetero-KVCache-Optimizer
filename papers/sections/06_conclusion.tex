@@ -1,0 +1,27 @@
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+
+In this paper, we introduced \texttt{Hetero-KVCache-Optimizer}, a hierarchical KV Cache management system that enables long-context MLLM inference on resource-constrained edge devices. Our key innovation lies in the \textit{transient interception} architecture: decoupling the logical computation view from the physical memory layout to satisfy FlashAttention's structural constraints while achieving sub-linear VRAM growth.
+
+Our three-tier storage hierarchy (HBM resident Sink+Tail, DRAM-compressed overflow, asynchronous prefetching) fundamentally differs from eviction-based approaches like StreamingLLM. By compressing rather than discarding intermediate tokens, we preserve the ability to reconstruct any portion of the sequence, achieving perfect recall on long-range dependency tasks.
+
+\textbf{Summary of Results.} Evaluated on Qwen2-VL-7B-Instruct (4-bit NF4) with multimodal inputs up to 12K tokens:
+\begin{itemize}
+    \item Peak VRAM constrained to \textbf{2.65GB} at 12K multimodal tokens where native encounters OOM beyond 8K
+    \item Needle-in-a-Haystack recall: \textbf{100\%} (Hetero-KV) with multimodal contexts
+    \item Successfully processes \textbf{12K+ multimodal tokens} within 16GB VRAM constraint where native baseline fails with OOM
+\end{itemize}
+
+\textbf{Limitations.} We identify the following limitations of our current work:
+
+\begin{enumerate}
+    \item \textbf{Hardware Bandwidth Gap:} While we constrain the VRAM to 16GB, the A100 GPU features PCIe Gen4 bandwidth ($\sim$64GB/s) that far exceed typical edge devices (e.g., RTX 4090 with PCIe Gen4 x16). The prefetching overhead (TPOT) may increase on true edge hardware due to lower PCIe bandwidth.
+    
+    \item \textbf{Single-Device Deployment:} Current implementation targets single-device deployment. Extending the hierarchical storage to span multiple GPUs and edge-cloud boundaries would enable even longer context support.
+    
+    \item \textbf{Speculative Decoding Integration:} Combining Hetero-KV with speculative decoding could further reduce TTFT while maintaining memory efficiency.
+    
+    \item \textbf{Adaptive Quantization:} Implementing mixed-precision quantization (FP8/INT4/INT2) based on token importance could push context limits toward 100K+ tokens on 16GB hardware.
+\end{enumerate}
+
+We believe the ``Transient-to-Static'' architectural pattern presented in this work has broader applicability beyond KV Cache management, potentially informing future designs for activation checkpointing and gradient compression in resource-constrained training scenarios.

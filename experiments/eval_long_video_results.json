@@ -1,0 +1,44 @@
+[
+  {
+    "target": 8192,
+    "actual_len": 8292,
+    "baseline": {
+      "ttft_s": 20.864,
+      "tpot_ms": 5216.42,
+      "peak_mem_gb": 5.747,
+      "len": 9042,
+      "resp": "\u5f6a"
+    },
+    "hetero": {
+      "ttft_s": 28.61,
+      "tpot_ms": 3863.69,
+      "peak_mem_gb": 3.762,
+      "len": 9042,
+      "resp": "!"
+    }
+  },
+  {
+    "target": 16384,
+    "actual_len": 16484,
+    "baseline": null,
+    "hetero": {
+      "ttft_s": 48.056,
+      "tpot_ms": 3904.82,
+      "peak_mem_gb": 3.763,
+      "len": 18051,
+      "resp": "!"
+    }
+  },
+  {
+    "target": 32768,
+    "actual_len": 32868,
+    "baseline": null,
+    "hetero": {
+      "ttft_s": 96.253,
+      "tpot_ms": 3861.14,
+      "peak_mem_gb": 3.763,
+      "len": 36069,
+      "resp": "!"
+    }
+  }
+]

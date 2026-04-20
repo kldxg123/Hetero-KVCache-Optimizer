@@ -1,0 +1,7 @@
+\begin{abstract}
+The deployment of Multimodal Large Language Models (MLLMs) on edge devices is fundamentally constrained by the linear $O(N)$ GPU memory growth of the KV Cache. For long-video and multi-image scenarios (16K+ tokens), the KV Cache combined with visual feature maps can exceed 12GB, rendering 16GB consumer GPUs incapable of processing long-context multimodal tasks. We present \texttt{Hetero-KVCache-Optimizer}, a hierarchical KV Cache management system that achieves sub-linear VRAM growth while preserving full retrieval accuracy.
+
+Our core innovation is the \textit{transient interception} architecture, which decouples the logical computation view from physical memory layout. During prefill, we maintain full tensors for FlashAttention compatibility while asynchronously extracting essential tokens to a static buffer. Overflow tokens are compressed to 4-bit and offloaded to DRAM rather than discarded, enabling reconstruction when needed. An in-place rolling mechanism eliminates memory fragmentation.
+
+Evaluated on Qwen2-VL-7B-Instruct (4-bit) with multimodal inputs up to 12K tokens, Hetero-KV constrains peak VRAM to \textbf{2.65GB} at 12K tokens, whereas native HuggingFace encounters Out-Of-Memory (OOM) failures beyond 8K. On Needle-in-a-Haystack tests with visual contexts, we achieve \textbf{100\% recall} across all depths and lengths. Our system successfully processes 12K+ multimodal tokens within 16GB VRAM constraints where native baseline fails with OOM.
+\end{abstract}

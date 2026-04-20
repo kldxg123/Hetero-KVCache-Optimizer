@@ -1,0 +1,61 @@
+{
+  "device": "NVIDIA A100 80GB PCIe",
+  "model": "Qwen2-VL-7B-Instruct (4-bit NF4)",
+  "test_type": "Long-context MLLM simulation",
+  "tests": [
+    {
+      "name": "4K context",
+      "hetero": {
+        "success": true,
+        "ttft": 7.971831798553467,
+        "tpot": 0.048751556873321535,
+        "peak_memory_gb": 0.9315886497497559,
+        "steady_memory_gb": 0.3517789840698242,
+        "seq_length": 4092
+      },
+      "native": {
+        "success": true,
+        "ttft": 0.41371917724609375,
+        "tpot": 0.04766006469726562,
+        "peak_memory_gb": 1.506075382232666,
+        "steady_memory_gb": 0.3517789840698242
+      },
+      "actual_tokens": 4072
+    },
+    {
+      "name": "8K context",
+      "hetero": {
+        "success": true,
+        "ttft": 16.1805419921875,
+        "tpot": 0.04873523712158203,
+        "peak_memory_gb": 1.506075382232666,
+        "steady_memory_gb": 0.3518390655517578,
+        "seq_length": 8120
+      },
+      "native": {
+        "success": true,
+        "ttft": 0.8363614082336426,
+        "tpot": 0.04851644039154053,
+        "peak_memory_gb": 2.6467604637145996,
+        "steady_memory_gb": 0.3518390655517578
+      },
+      "actual_tokens": 8100
+    },
+    {
+      "name": "12K context",
+      "hetero": {
+        "success": true,
+        "ttft": 24.06719708442688,
+        "tpot": 0.04821920394897461,
+        "peak_memory_gb": 2.6467604637145996,
+        "steady_memory_gb": 0.3518991470336914,
+        "seq_length": 12120
+      },
+      "native": {
+        "skipped": true,
+        "reason": "\u9884\u671fOOM"
+      },
+      "actual_tokens": 12100
+    }
+  ]
+}

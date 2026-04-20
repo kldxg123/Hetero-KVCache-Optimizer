@@ -1,0 +1,55 @@
+{
+  "method": "Native-HF-4bit-NF4",
+  "model": "Qwen2-VL-7B-Instruct",
+  "model_weights_gb": 5.387005805969238,
+  "tests": [
+    {
+      "target_tokens": 4096,
+      "success": true,
+      "oom": false,
+      "actual_tokens": 4348,
+      "ttft_s": 1.2774443310045172,
+      "tpot_ms": 47.95054600108415,
+      "prefill_peak_gb": 7.104884147644043,
+      "decode_peak_gb": 7.084486484527588,
+      "steady_memory_gb": 7.076481819152832,
+      "kv_cache_gb": 0.232208251953125
+    },
+    {
+      "target_tokens": 8192,
+      "success": true,
+      "oom": false,
+      "actual_tokens": 4348,
+      "ttft_s": 0.715525951993186,
+      "tpot_ms": 46.392219900735654,
+      "prefill_peak_gb": 7.104884147644043,
+      "decode_peak_gb": 7.084486484527588,
+      "steady_memory_gb": 7.076481819152832,
+      "kv_cache_gb": 0.232208251953125
+    },
+    {
+      "target_tokens": 12288,
+      "success": true,
+      "oom": false,
+      "actual_tokens": 4348,
+      "ttft_s": 0.716672747003031,
+      "tpot_ms": 46.47591284956434,
+      "prefill_peak_gb": 7.104884147644043,
+      "decode_peak_gb": 7.084486484527588,
+      "steady_memory_gb": 7.076481819152832,
+      "kv_cache_gb": 0.232208251953125
+    },
+    {
+      "target_tokens": 16384,
+      "success": true,
+      "oom": false,
+      "actual_tokens": 4348,
+      "ttft_s": 0.7167503509990638,
+      "tpot_ms": 45.435021752200555,
+      "prefill_peak_gb": 7.104884147644043,
+      "decode_peak_gb": 7.084486484527588,
+      "steady_memory_gb": 7.076481819152832,
+      "kv_cache_gb": 0.232208251953125
+    }
+  ]
+}

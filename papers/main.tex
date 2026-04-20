@@ -1,0 +1,51 @@
+\documentclass[sigconf,nonacm,preprint]{acmart}
+
+% --- Essential Packages ---
+\usepackage{booktabs} 
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{graphicx} 
+\usepackage{subfigure} 
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[capitalize]{cleveref}
+
+% --- Metadata ---
+\copyrightyear{2026}
+\acmYear{2026}
+
+% --- Running Headers ---
+\renewcommand{\shortauthors}{Anonymous Authors}
+\renewcommand{\shorttitle}{Hetero-KVCache-Optimizer}
+
+\begin{document}
+
+\title{Hetero-KVCache-Optimizer: Breaking the 16GB Memory Wall for Long-Context MLLMs on Edge Devices}
+
+\author{Anonymous Authors}
+\affiliation{%
+  \institution{Anonymous Institution}
+  \city{Anonymous City}
+  \country{Anonymous Country}}
+\email{anonymous@anonymous.edu}
+
+% --- Abstract ---
+\input{sections/00_abstract}
+
+\keywords{MLLM, Multimodal LLM, KV Cache Optimization, Edge Computing, Memory Fragmentation}
+
+\maketitle
+
+% --- Sections ---
+\input{sections/01_introduction}
+\input{sections/02_background}
+\input{sections/03_design}
+\input{sections/04_evaluation}
+\input{sections/05_theory}
+\input{sections/06_conclusion}
+
+% --- Bibliography ---
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs.bib}
+
+\end{document}
