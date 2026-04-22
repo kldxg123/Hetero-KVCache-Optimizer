@@ -19,7 +19,11 @@ from src.memory.manager import HeteroKVManager
 
 # Optional Triton fused operator (falls back to standard matmul if unavailable)
 try:
-    from src.quantization.fused_dequant_attn import fused_dequant_attention
+    from src.quantization.fused_dequant_attn import (
+        fused_dequant_attention,
+        fused_dequant_attn_forward,
+        fused_dequant_attn_decode,
+    )
     _TRITON_AVAILABLE = True
 except Exception:
     _TRITON_AVAILABLE = False
@@ -201,10 +205,70 @@ class FusedHeteroCache(DynamicCache):
     def swap_in_chunk(
         self, chunk_key: str
     ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-        """Swap a compressed chunk back into HBM."""
+        """Swap a compressed chunk back into HBM (legacy: decompresses to BF16)."""
         if self._manager is None:
             return None
         return self._manager.swap_in(0, chunk_key)
+
+    def swap_in_quantized(
+        self, chunk_key: str
+    ) -> Optional[Dict[str, torch.Tensor]]:
+        """
+        Zero-copy swap-in: returns quantized tensors without decompressing.
+        Use with fused_dequant_attn_* to avoid BF16 memory spikes.
+        """
+        if self._manager is None:
+            return None
+        return self._manager.swap_in_quantized(0, chunk_key)
+
+    def fused_attn_on_swapped(
+        self,
+        q: torch.Tensor,
+        chunk_key: str,
+        sm_scale: Optional[float] = None,
+    ) -> Optional[torch.Tensor]:
+        """
+        End-to-end fused attention on a swapped-in quantized chunk.
+        Computes attention output without ever materializing BF16 K/V.
+
+        Args:
+            q: Query tensor [batch, heads, 1, head_dim] (decode) or [batch, heads, seq_q, head_dim]
+            chunk_key: DRAM chunk to attend to
+            sm_scale: softmax scaling (default 1/sqrt(head_dim))
+
+        Returns:
+            Attention output [batch, heads, seq_q, head_dim] or None
+        """
+        quant_data = self.swap_in_quantized(chunk_key)
+        if quant_data is None:
+            return None
+
+        try:
+            if q.shape[2] == 1:
+                return fused_dequant_attn_decode(
+                    q,
+                    quant_data["k_data"], quant_data["k_scales"], quant_data["k_zps"],
+                    quant_data["v_data"], quant_data["v_scales"], quant_data["v_zps"],
+                    sm_scale=sm_scale,
+                )
+            else:
+                return fused_dequant_attn_forward(
+                    q,
+                    quant_data["k_data"], quant_data["k_scales"], quant_data["k_zps"],
+                    quant_data["v_data"], quant_data["v_scales"], quant_data["v_zps"],
+                    sm_scale=sm_scale,
+                )
+        except Exception:
+            # Fallback to standard swap-in + decompress path
+            result = self.swap_in_chunk(chunk_key)
+            if result is None:
+                return None
+            restored_k, restored_v = result
+            scores = torch.matmul(q.float(), restored_k.float().transpose(-2, -1))
+            if sm_scale is not None:
+                scores = scores * sm_scale
+            attn = torch.softmax(scores, dim=-1)
+            return torch.matmul(attn, restored_v.float())
 
 
 # ---------------------------------------------------------------------------

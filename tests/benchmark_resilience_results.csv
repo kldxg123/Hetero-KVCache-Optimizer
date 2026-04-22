@@ -1,0 +1,4 @@
+config,mean_tpot_ms,p50_tpot_ms,p99_tpot_ms,max_tpot_ms,std_tpot_ms,peak_vram_mb
+baseline,9.811,9.759,10.030,16.739,0.580,912.1
+fused_only,9.859,9.815,11.240,16.896,0.522,912.1
+full_system,17.213,17.122,17.301,30.621,1.037,1048.1

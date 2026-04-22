@@ -20,6 +20,7 @@ if project_root not in sys.path:
 
 from src.quantization.kv_compressor import KVCompressor
 from src.policy.prefetcher import AsyncPrefetcher
+from src.core.scheduler import PredictivePrefetchScheduler
 
 
 class HeteroKVManager:
@@ -75,6 +76,9 @@ class HeteroKVManager:
         self._prefetcher: Optional[AsyncPrefetcher] = None
         if enable_prefetch and torch.cuda.is_available():
             self._prefetcher = AsyncPrefetcher(device=torch.device(device))
+
+        # Predictive prefetch scheduler (initialized lazily when DRAM entries exist)
+        self._predictive_scheduler: Optional[PredictivePrefetchScheduler] = None
 
         # DRAM storage table: {chunk_key: {"k_data", "k_scales", "k_zps",
         #                                   "v_data", "v_scales", "v_zps"}}
@@ -162,6 +166,38 @@ class HeteroKVManager:
         self._value_cache[layer] = v_sink
         return overflow
 
+    def swap_in_quantized(
+        self, layer_idx: int, chunk_key: str
+    ) -> Optional[Dict[str, torch.Tensor]]:
+        """
+        Swap a compressed chunk from DRAM back into HBM *without decompressing*.
+        Returns the raw quantized tensors for use with fused_dequant_attn,
+        eliminating the BF16 intermediate memory spike.
+
+        Returns dict with keys: k_data, k_scales, k_zps, v_data, v_scales, v_zps
+        (all on self.device), or None if chunk_key missing.
+        """
+        if chunk_key not in self._dram_table:
+            return None
+
+        entry = self._dram_table.get(chunk_key)
+        if entry is None:
+            return None
+
+        result = {}
+        for key in ("k_data", "k_scales", "k_zps", "v_data", "v_scales", "v_zps"):
+            t = entry.get(key)
+            if t is not None:
+                result[key] = t.to(self.device, non_blocking=True)
+            else:
+                return None
+
+        if self._bandwidth_limiter is not None:
+            for t in result.values():
+                self._bandwidth_limiter.simulate_transfer(t)
+        torch.cuda.synchronize(self.device)
+        return result
+
     def swap_in(
         self, layer_idx: int, chunk_key: str
     ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
@@ -230,6 +266,35 @@ class HeteroKVManager:
             "v_zps": entry["v_zps"],
         }
         self._prefetcher.submit_prefetch_task(chunk_key, prefetch_entry, self._compressor)
+
+    def predictive_prefetch_step(
+        self,
+        current_chunk: Optional[str] = None,
+        attention_weights: Optional[torch.Tensor] = None,
+    ) -> List[str]:
+        """
+        Proactive prefetch: predict which DRAM chunks are needed next
+        and submit async H2D transfers ahead of time.
+
+        Returns list of chunk keys submitted for prefetch.
+        """
+        if self._prefetcher is None:
+            return []
+
+        # Lazy-init the predictive scheduler
+        if self._predictive_scheduler is None and len(self._dram_table) > 0:
+            self._predictive_scheduler = PredictivePrefetchScheduler(
+                prefetcher=self._prefetcher,
+                dram_table=self._dram_table,
+                compressor=self._compressor,
+            )
+
+        if self._predictive_scheduler is not None:
+            return self._predictive_scheduler.schedule_step(
+                current_chunk=current_chunk,
+                attention_weights=attention_weights,
+            )
+        return []
 
     def memory_summary(self) -> Dict[str, Any]:
         """Return a snapshot of HBM and DRAM consumption."""
