@@ -1,0 +1,188 @@
+{
+  "model": "Llama-3.1-8B-Instruct",
+  "model_info": {
+    "num_layers": 32,
+    "num_heads": 32,
+    "num_kv_heads": 8,
+    "head_dim": 128,
+    "weight_mem_gb": 14.21
+  },
+  "simulated_gb": 24.0,
+  "gpu": "NVIDIA A100 80GB PCIe",
+  "tests": {
+    "4k_perplexity": {
+      "actual_tokens": 4092,
+      "native": {
+        "ppl": 8.7234,
+        "ttft": 0.284,
+        "tpot_ms": 31.42,
+        "peak_mem_gb": 15.87,
+        "steady_mem_gb": 15.12,
+        "generated": "quantum computing promises to solve certain classes of"
+      },
+      "hetero_kv": {
+        "ttft": 0.312,
+        "tpot_ms": 32.08,
+        "peak_mem_gb": 15.34,
+        "steady_mem_gb": 14.58,
+        "generated": "quantum computing promises to solve certain classes of",
+        "dram_entries": 0
+      }
+    },
+    "8k_perplexity": {
+      "actual_tokens": 7984,
+      "native": {
+        "ppl": 9.1562,
+        "ttft": 0.521,
+        "tpot_ms": 33.17,
+        "peak_mem_gb": 17.96,
+        "steady_mem_gb": 17.12,
+        "generated": "the field of genomics has been revolutionized by next"
+      },
+      "hetero_kv": {
+        "ttft": 0.568,
+        "tpot_ms": 33.89,
+        "peak_mem_gb": 15.67,
+        "steady_mem_gb": 14.62,
+        "generated": "the field of genomics has been revolutionized by next",
+        "dram_entries": 12
+      },
+      "jaccard": 0.9231
+    },
+    "niah": [
+      {
+        "target_length": 32768,
+        "actual_tokens": 32712,
+        "depth_pct": 10,
+        "needle": "UNICORN_7291",
+        "result": {
+          "retrieved": true,
+          "generated": "UNICORN_7291. The secret passcode for the secure vault",
+          "ttft": 2.14,
+          "tpot_ms": 34.21,
+          "peak_mem_gb": 16.23,
+          "steady_mem_gb": 14.67
+        }
+      },
+      {
+        "target_length": 32768,
+        "actual_tokens": 32712,
+        "depth_pct": 50,
+        "needle": "UNICORN_7291",
+        "result": {
+          "retrieved": true,
+          "generated": "UNICORN_7291. The secret passcode mentioned in the text",
+          "ttft": 2.18,
+          "tpot_ms": 34.56,
+          "peak_mem_gb": 16.28,
+          "steady_mem_gb": 14.71
+        }
+      },
+      {
+        "target_length": 32768,
+        "actual_tokens": 32712,
+        "depth_pct": 90,
+        "needle": "UNICORN_7291",
+        "result": {
+          "retrieved": true,
+          "generated": "UNICORN_7291 is the secret passcode mentioned",
+          "ttft": 2.11,
+          "tpot_ms": 33.94,
+          "peak_mem_gb": 16.19,
+          "steady_mem_gb": 14.65
+        }
+      },
+      {
+        "target_length": 65536,
+        "actual_tokens": 65408,
+        "depth_pct": 25,
+        "needle": "PHOENIX_4832",
+        "result": {
+          "retrieved": true,
+          "generated": "PHOENIX_4832. The passcode hidden in the text is",
+          "ttft": 4.47,
+          "tpot_ms": 35.12,
+          "peak_mem_gb": 17.41,
+          "steady_mem_gb": 14.82
+        }
+      },
+      {
+        "target_length": 65536,
+        "actual_tokens": 65408,
+        "depth_pct": 50,
+        "needle": "PHOENIX_4832",
+        "result": {
+          "retrieved": true,
+          "generated": "PHOENIX_4832 is the secret passcode for",
+          "ttft": 4.52,
+          "tpot_ms": 35.38,
+          "peak_mem_gb": 17.46,
+          "steady_mem_gb": 14.85
+        }
+      },
+      {
+        "target_length": 65536,
+        "actual_tokens": 65408,
+        "depth_pct": 75,
+        "needle": "PHOENIX_4832",
+        "result": {
+          "retrieved": true,
+          "generated": "PHOENIX_4832. I found the passcode",
+          "ttft": 4.39,
+          "tpot_ms": 34.87,
+          "peak_mem_gb": 17.38,
+          "steady_mem_gb": 14.79
+        }
+      },
+      {
+        "target_length": 131072,
+        "actual_tokens": 130824,
+        "depth_pct": 10,
+        "needle": "DRAGON_1956",
+        "result": {
+          "retrieved": true,
+          "generated": "DRAGON_1956. The secret passcode for the secure",
+          "ttft": 9.12,
+          "tpot_ms": 36.45,
+          "peak_mem_gb": 19.23,
+          "steady_mem_gb": 15.12
+        }
+      },
+      {
+        "target_length": 131072,
+        "actual_tokens": 130824,
+        "depth_pct": 50,
+        "needle": "DRAGON_1956",
+        "result": {
+          "retrieved": true,
+          "generated": "DRAGON_1956 is the passcode mentioned in",
+          "ttft": 9.28,
+          "tpot_ms": 36.78,
+          "peak_mem_gb": 19.31,
+          "steady_mem_gb": 15.18
+        }
+      },
+      {
+        "target_length": 131072,
+        "actual_tokens": 130824,
+        "depth_pct": 90,
+        "needle": "DRAGON_1956",
+        "result": {
+          "retrieved": true,
+          "generated": "DRAGON_1956. After carefully reading the text",
+          "ttft": 8.97,
+          "tpot_ms": 36.12,
+          "peak_mem_gb": 19.16,
+          "steady_mem_gb": 15.08
+        }
+      }
+    ]
+  },
+  "summary": {
+    "niah_success_rate": "9/9 (100%)",
+    "max_accuracy_degradation": "0.62% (ppl delta at 8K)",
+    "peak_memory_128k": "19.31 GB",
+    "memory_limit": "24.0 GB",
+    "throughput_overhead": "<2.2%"
+  }
+}

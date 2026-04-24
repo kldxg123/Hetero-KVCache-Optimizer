@@ -36,7 +36,8 @@ from src.core.engine_wrapper import build_fused_cache, ChunkedPrefillEngine
 
 def set_memory_limit(simulated_gb=24.0):
     if torch.cuda.is_available():
-        total = torch.cuda.get_device_properties(0).total_mem / 1e9
+        props = torch.cuda.get_device_properties(0)
+        total = props.total_memory / 1e9
         fraction = simulated_gb / total
         torch.cuda.set_per_process_memory_fraction(fraction, 0)
         print(f"[Memory] Simulating {simulated_gb:.0f} GB GPU "
