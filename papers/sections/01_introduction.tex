@@ -24,7 +24,7 @@ Our system features three core contributions that collectively enable sub-linear
 \begin{itemize}
     \item \textbf{Transient-to-Static Storage Contract}: We introduce a novel architectural pattern that decouples the logical computation graph from the physical memory layout. The prefill engine computes on full tensors (satisfying FlashAttention~\cite{dao2022flashattention}'s dimension requirements) while asynchronously extracting only essential Sink (64) and Tail (8192) tokens to a static buffer. The massive transient activation memory is immediately reclaimed via explicit tensor deletion and garbage collection.
 
-    \item \textbf{4-Bit Hierarchical Compression}: Unlike eviction-based methods that permanently discard tokens, we apply group-wise asymmetric INT4 quantization (72\% compression ratio) to offload overflow KV tensors from HBM to DRAM. This preserves the ability to reconstruct any portion of the sequence when needed, enabling a true two-tier storage hierarchy.
+    \item \textbf{4-Bit Hierarchical Compression}: Unlike eviction-based methods that permanently discard tokens, we apply group-wise asymmetric INT4 quantization (48\% storage reduction via uint8-packed format, with 4-bit theoretical compression target) to offload overflow KV tensors from HBM to DRAM. This preserves the ability to reconstruct any portion of the sequence when needed, enabling a true two-tier storage hierarchy.
 
     \item \textbf{In-Place Rolling with Zero Fragmentation}: We bypass Python's dynamic allocation overhead by maintaining a contiguous physical memory pool. An in-place shift mechanism updates token positions without expensive re-allocation or memory fragmentation, reducing the steady-state physical footprint to a strict $O(1)$ bound.
 \end{itemize}

@@ -15,6 +15,7 @@ the decompressed BF16 (K, V) pair.
 
 import torch
 from typing import Dict, Any, Optional, Tuple
+from contextlib import nullcontext
 
 
 class AsyncPrefetcher:
@@ -32,7 +33,10 @@ class AsyncPrefetcher:
     def __init__(self, device: torch.device):
         self.device = device
         # Dedicated background CUDA stream, concurrent with main compute stream for H2D copy and decompression
-        self.prefetch_stream = torch.cuda.Stream(device=device)
+        if device.type == "cuda":
+            self.prefetch_stream = torch.cuda.Stream(device=device)
+        else:
+            self.prefetch_stream = None  # CPU mode: no async stream
         # Prefetch buffer: chunk_key -> (restored_k, restored_v) BF16
         self.buffer: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
 
@@ -64,7 +68,8 @@ class AsyncPrefetcher:
         if not has_split_kv and not has_merged:
             return  # Unknown protocol, skip
 
-        with torch.cuda.stream(self.prefetch_stream):
+        ctx = torch.cuda.stream(self.prefetch_stream) if self.prefetch_stream else nullcontext()
+        with ctx:
             if has_split_kv:
                 # Protocol A: K/V split
                 q_k = dram_data["k_data"].to(self.device, non_blocking=True)
@@ -101,7 +106,8 @@ class AsyncPrefetcher:
             return None
 
         # Wait for background stream H2D copy and decompression to complete
-        torch.cuda.current_stream().wait_stream(self.prefetch_stream)
+        if self.prefetch_stream is not None:
+            torch.cuda.current_stream().wait_stream(self.prefetch_stream)
         return self.buffer.pop(chunk_key)
 
     # ------------------------------------------------------------------

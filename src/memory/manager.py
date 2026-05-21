@@ -19,7 +19,10 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.quantization.kv_compressor import KVCompressor
+from src.memory.dram_storage import DRAMStorageManager
 from src.policy.prefetcher import AsyncPrefetcher
+from src.policy.heavy_hitter import HeavyHitterOracle
+from src.policy.adaptive_prefetch_controller import AdaptivePrefetchController
 from src.core.scheduler import PredictivePrefetchScheduler
 
 
@@ -72,6 +75,16 @@ class HeteroKVManager:
         # Compression engine
         self._compressor = KVCompressor(group_size=group_size, bits=bits)
 
+        # Heavy Hitter Oracle for attention-driven eviction (Phase D/E)
+        self._oracle = HeavyHitterOracle(
+            block_size=16,
+            sink_tokens=sink_tokens,
+            local_window=hbm_budget_tokens,
+        )
+
+        # Adaptive prefetch controller (Phase F)
+        self._adaptive_controller = AdaptivePrefetchController()
+
         # Async prefetcher for DRAM -> HBM overlap
         self._prefetcher: Optional[AsyncPrefetcher] = None
         if enable_prefetch and torch.cuda.is_available():
@@ -80,10 +93,18 @@ class HeteroKVManager:
         # Predictive prefetch scheduler (initialized lazily when DRAM entries exist)
         self._predictive_scheduler: Optional[PredictivePrefetchScheduler] = None
 
-        # DRAM storage table: {chunk_key: {"k_data", "k_scales", "k_zps",
-        #                                   "v_data", "v_scales", "v_zps"}}
-        self._dram_table: Dict[str, Dict[str, torch.Tensor]] = {}
+        # DRAM tier-2 storage: managed by DRAMStorageManager (pinned CPU memory)
+        self._dram = DRAMStorageManager()
         self._eviction_counter = 0
+
+        # Adaptive self-healing: track chunk metadata for dynamic window retrieval
+        self._chunk_eviction_order: List[str] = []  # Track eviction order
+        self._chunk_attention_scores: Dict[str, float] = {}  # chunk_key -> avg score
+
+    @property
+    def _dram_table(self) -> Dict[str, Dict[str, torch.Tensor]]:
+        """Backward-compatible access to the DRAM storage dict."""
+        return self._dram.table
 
     # ------------------------------------------------------------------
     # Tiered Storage API
@@ -177,10 +198,10 @@ class HeteroKVManager:
         Returns dict with keys: k_data, k_scales, k_zps, v_data, v_scales, v_zps
         (all on self.device), or None if chunk_key missing.
         """
-        if chunk_key not in self._dram_table:
+        if chunk_key not in self._dram:
             return None
 
-        entry = self._dram_table.get(chunk_key)
+        entry = self._dram.retrieve(chunk_key)
         if entry is None:
             return None
 
@@ -207,10 +228,10 @@ class HeteroKVManager:
         Returns:
             (restored_k, restored_v) as BF16 tensors, or None if chunk_key missing.
         """
-        if chunk_key not in self._dram_table:
+        if not self._dram.contains(chunk_key):
             return None
 
-        entry = self._dram_table.pop(chunk_key)
+        entry = self._dram.remove(chunk_key)
 
         # Fast path: prefetch hit
         if self._prefetcher is not None:
@@ -252,11 +273,22 @@ class HeteroKVManager:
         """Return the logical sequence offset maintained for RoPE alignment."""
         return self._seq_offsets[layer_idx]
 
+    def update_attention_scores(self, attention_weights: torch.Tensor) -> None:
+        """
+        Phase D: Feed attention weights from the latest decode step to the
+        HeavyHitterOracle for cumulative importance tracking.
+        """
+        self._oracle.update(attention_weights)
+
+    def get_oracle_scores(self) -> Optional[torch.Tensor]:
+        """Return current cumulative attention scores (for debugging/testing)."""
+        return self._oracle.token_scores
+
     def schedule_prefetch(self, chunk_key: str) -> None:
         """Submit an asynchronous DRAM -> HBM prefetch task."""
-        if self._prefetcher is None or chunk_key not in self._dram_table:
+        if self._prefetcher is None or not self._dram.contains(chunk_key):
             return
-        entry = self._dram_table[chunk_key]
+        entry = self._dram.retrieve(chunk_key)
         prefetch_entry = {
             "k_data": entry["k_data"],
             "k_scales": entry["k_scales"],
@@ -271,25 +303,33 @@ class HeteroKVManager:
         self,
         current_chunk: Optional[str] = None,
         attention_weights: Optional[torch.Tensor] = None,
+        cache_miss: bool = False,
     ) -> List[str]:
         """
         Proactive prefetch: predict which DRAM chunks are needed next
         and submit async H2D transfers ahead of time.
 
-        Returns list of chunk keys submitted for prefetch.
+        Integrates AdaptivePrefetchController for dynamic window sizing.
         """
         if self._prefetcher is None:
             return []
 
         # Lazy-init the predictive scheduler
-        if self._predictive_scheduler is None and len(self._dram_table) > 0:
+        if self._predictive_scheduler is None and self._dram.num_entries > 0:
             self._predictive_scheduler = PredictivePrefetchScheduler(
                 prefetcher=self._prefetcher,
-                dram_table=self._dram_table,
+                dram_table=self._dram.table,
                 compressor=self._compressor,
             )
 
         if self._predictive_scheduler is not None:
+            # AdaptivePrefetchController: dynamically adjust lookahead window
+            new_window = self._adaptive_controller.compute_window(
+                attention_weights=attention_weights,
+                cache_miss=cache_miss,
+            )
+            self._predictive_scheduler.lookahead_window = new_window
+
             return self._predictive_scheduler.schedule_step(
                 current_chunk=current_chunk,
                 attention_weights=attention_weights,
@@ -303,15 +343,12 @@ class HeteroKVManager:
             if k is not None:
                 hbm_tokens += k.shape[-2]
 
-        dram_bytes = 0
-        for entry in self._dram_table.values():
-            for t in entry.values():
-                dram_bytes += t.element_size() * t.nelement()
+        dram_summary = self._dram.memory_summary()
 
         return {
             "hbm_tokens": hbm_tokens,
-            "dram_entries": len(self._dram_table),
-            "dram_bytes": dram_bytes,
+            "dram_entries": dram_summary["num_entries"],
+            "dram_bytes": dram_summary["total_bytes"],
             "max_hbm_tokens": self.max_hbm_tokens(),
         }
 
@@ -345,7 +382,7 @@ class HeteroKVManager:
             self._seq_offsets.append(0)
 
         if self._key_cache[layer_idx] is None:
-            # First write: crop to sink + tail
+            # First write: crop to sink + tail, evict body to DRAM
             sink_amt = min(new_len, self.sink_tokens)
             tail_amt = min(new_len - sink_amt, self.hbm_budget_tokens)
 
@@ -360,6 +397,17 @@ class HeteroKVManager:
             else:
                 self._key_cache[layer_idx] = k_sink
                 self._value_cache[layer_idx] = v_sink
+
+            # Evict body (middle tokens between sink and tail) to DRAM
+            if self.enable_quant and new_len > max_hbm:
+                body_start = sink_amt
+                body_end = new_len - tail_amt
+                if body_end > body_start:
+                    self._evict_to_dram(
+                        layer_idx,
+                        key_states[..., body_start:body_end, :],
+                        value_states[..., body_start:body_end, :],
+                    )
         else:
             # Append and maintain rolling window
             new_k = torch.cat([self._key_cache[layer_idx], key_states], dim=-2)
@@ -406,7 +454,8 @@ class HeteroKVManager:
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Decode residency: append new token to the physical pool and maintain
-        the rolling window in-place.
+        the rolling window. When HBM is full, consult HeavyHitterOracle for
+        attention-driven eviction instead of simple FIFO.
         """
         max_hbm = self.max_hbm_tokens()
 
@@ -430,13 +479,78 @@ class HeteroKVManager:
             new_k = torch.cat([k_cache, key_states], dim=-2)
             new_v = torch.cat([v_cache, value_states], dim=-2)
         else:
-            # In-place rolling: evict oldest tail token, append new token
-            sink_k = k_cache[..., : self.sink_tokens, :]
-            sink_v = v_cache[..., : self.sink_tokens, :]
-            old_tail_k = k_cache[..., self.sink_tokens + 1 :, :]
-            old_tail_v = v_cache[..., self.sink_tokens + 1 :, :]
-            new_k = torch.cat([sink_k, old_tail_k, key_states], dim=-2)
-            new_v = torch.cat([sink_v, old_tail_v, value_states], dim=-2)
+            # Oracle-driven eviction: find least important tokens to evict
+            new_k = torch.cat([k_cache, key_states], dim=-2)
+            new_v = torch.cat([v_cache, value_states], dim=-2)
+
+            tokens_to_evict = 1  # One token per decode step
+
+            if self._oracle.token_scores is not None and self.enable_quant:
+                # Phase D+E: Use Triton-accelerated oracle for eviction decision
+                current_seq_len = new_k.shape[-2]
+                evict_candidates = self._oracle.get_eviction_candidates(
+                    current_seq_len=current_seq_len,
+                    evict_num_blocks=max(1, tokens_to_evict // self._oracle.block_size),
+                )
+
+                if evict_candidates.numel() > 0:
+                    # Convert block indices to token ranges and build eviction mask
+                    evict_mask = torch.zeros(current_seq_len, dtype=torch.bool, device=new_k.device)
+                    for block_idx in evict_candidates:
+                        start_tok = block_idx.item() * self._oracle.block_size
+                        end_tok = min(start_tok + self._oracle.block_size, current_seq_len)
+                        # Protect sink zone
+                        if start_tok < self.sink_tokens:
+                            continue
+                        evict_mask[start_tok:end_tok] = True
+
+                    if evict_mask.any():
+                        keep_mask = ~evict_mask
+                        evicted_k = new_k[..., evict_mask, :]
+                        evicted_v = new_v[..., evict_mask, :]
+                        self._evict_to_dram(layer_idx, evicted_k, evicted_v)
+
+                        new_k = new_k[..., keep_mask, :]
+                        new_v = new_v[..., keep_mask, :]
+                    else:
+                        # Fallback: simple rolling window
+                        new_k = torch.cat(
+                            [k_cache[..., :self.sink_tokens, :],
+                             k_cache[..., self.sink_tokens + 1:, :],
+                             key_states], dim=-2)
+                        new_v = torch.cat(
+                            [v_cache[..., :self.sink_tokens, :],
+                             v_cache[..., self.sink_tokens + 1:, :],
+                             value_states], dim=-2)
+                        evicted_k = k_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
+                        evicted_v = v_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
+                        self._evict_to_dram(layer_idx, evicted_k, evicted_v)
+                else:
+                    # No candidates from oracle (all protected), fallback to FIFO
+                    new_k = torch.cat(
+                        [k_cache[..., :self.sink_tokens, :],
+                         k_cache[..., self.sink_tokens + 1:, :],
+                         key_states], dim=-2)
+                    new_v = torch.cat(
+                        [v_cache[..., :self.sink_tokens, :],
+                         v_cache[..., self.sink_tokens + 1:, :],
+                         value_states], dim=-2)
+                    evicted_k = k_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
+                    evicted_v = v_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
+                    self._evict_to_dram(layer_idx, evicted_k, evicted_v)
+            else:
+                # No attention scores yet: FIFO eviction of oldest tail token
+                new_k = torch.cat(
+                    [k_cache[..., :self.sink_tokens, :],
+                     k_cache[..., self.sink_tokens + 1:, :],
+                     key_states], dim=-2)
+                new_v = torch.cat(
+                    [v_cache[..., :self.sink_tokens, :],
+                     v_cache[..., self.sink_tokens + 1:, :],
+                     value_states], dim=-2)
+                evicted_k = k_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
+                evicted_v = v_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
+                self._evict_to_dram(layer_idx, evicted_k, evicted_v)
 
         self._key_cache[layer_idx] = new_k
         self._value_cache[layer_idx] = new_v
@@ -444,37 +558,99 @@ class HeteroKVManager:
 
         return self._key_cache[layer_idx], self._value_cache[layer_idx]
 
+    def decompress_dram_chunks(
+        self, layer_idx: int
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], int]:
+        """
+        Self-healing: decompress ALL DRAM chunks for a specific layer to BF16.
+        Non-destructive — entries remain in DRAM for future use.
+        Only decompresses chunks whose key matches the given layer_idx.
+        """
+        prefix = f"l{layer_idx}_"
+        dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
+        if not dram_keys:
+            return None, None, 0
+
+        dram_k_parts, dram_v_parts = [], []
+        for chunk_key in dram_keys:
+            entry = self._dram.retrieve(chunk_key)
+            if entry is None:
+                continue
+
+            try:
+                q_k = entry["k_data"].to(self.device, non_blocking=True)
+                s_k = entry["k_scales"].to(self.device, non_blocking=True)
+                z_k = entry["k_zps"].to(self.device, non_blocking=True)
+                q_v = entry["v_data"].to(self.device, non_blocking=True)
+                s_v = entry["v_scales"].to(self.device, non_blocking=True)
+                z_v = entry["v_zps"].to(self.device, non_blocking=True)
+
+                restored_k = self._compressor.decompress(q_k, s_k, z_k, target_dtype=torch.float16)
+                restored_v = self._compressor.decompress(q_v, s_v, z_v, target_dtype=torch.float16)
+
+                dram_k_parts.append(restored_k)
+                dram_v_parts.append(restored_v)
+            except Exception:
+                continue
+
+        if not dram_k_parts:
+            return None, None, 0
+
+        dram_k = torch.cat(dram_k_parts, dim=-2)
+        dram_v = torch.cat(dram_v_parts, dim=-2)
+        token_count = dram_k.shape[-2]
+
+        return dram_k, dram_v, token_count
+
+    def count_dram_tokens(self, layer_idx: int = 0) -> int:
+        """Count total tokens in DRAM for a specific layer."""
+        prefix = f"l{layer_idx}_"
+        dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
+        if not dram_keys:
+            return 0
+        entry = self._dram.retrieve(dram_keys[0])
+        if entry is None:
+            return 0
+        k = entry["k_data"]
+        tokens_per_chunk = k.shape[-2] if k.dim() >= 2 else 1
+        return len(dram_keys) * tokens_per_chunk
+
     def _evict_to_dram(
         self,
         layer_idx: int,
         k_chunk: torch.Tensor,
         v_chunk: torch.Tensor,
     ) -> None:
-        """Compress a KV chunk and move it to DRAM (pinned CPU memory)."""
+        """Compress a KV chunk and move it to DRAM via DRAMStorageManager (pinned CPU memory)."""
         chunk_key = f"l{layer_idx}_e{self._eviction_counter}"
 
         q_k, k_scales, k_zps = self._compressor.compress(k_chunk)
         q_v, v_scales, v_zps = self._compressor.compress(v_chunk)
 
         entry = {
-            "k_data": q_k.cpu().pin_memory(),
-            "k_scales": k_scales.cpu().pin_memory(),
-            "k_zps": k_zps.cpu().pin_memory(),
-            "v_data": q_v.cpu().pin_memory(),
-            "v_scales": v_scales.cpu().pin_memory(),
-            "v_zps": v_zps.cpu().pin_memory(),
+            "k_data": q_k,
+            "k_scales": k_scales,
+            "k_zps": k_zps,
+            "v_data": q_v,
+            "v_scales": v_scales,
+            "v_zps": v_zps,
         }
+
+        # DRAMStorageManager handles .cpu().pin_memory() internally
+        self._dram.store_entry(chunk_key, entry)
+
         if self._bandwidth_limiter is not None:
-            for t in entry.values():
-                self._bandwidth_limiter.simulate_transfer(t)
-        self._dram_table[chunk_key] = entry
+            stored = self._dram.retrieve(chunk_key)
+            if stored is not None:
+                for t in stored.values():
+                    self._bandwidth_limiter.simulate_transfer(t)
 
         if layer_idx == 0:
             tokens = k_chunk.shape[-2]
             self._eviction_counter += 1
             print(
                 f"  [Evict->DRAM] layer=0 chunk={chunk_key} "
-                f"tokens={tokens} DRAM_entries={len(self._dram_table)}"
+                f"tokens={tokens} DRAM_entries={self._dram.num_entries}"
             )
 
 

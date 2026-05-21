@@ -1,0 +1,19 @@
+Configuration,Seq Length,Peak VRAM (GB),Prefill Latency (s),Decode TTFT (ms),Avg Decode (ms),NIAH Recall (%),DRAM Entries,DRAM Size (MB),Quant MSE,Swap Attn Latency (ms),Swap Peak Delta (MB),Status
+Full System,8192,0.1602,0.16,0.94,0.36,100.0,0,0.0,N/A,N/A,N/A,Success
+w/o Quant,8192,0.1602,0.147,0.91,0.36,100.0,0,0.0,N/A,N/A,N/A,Success
+w/o Prefetch,8192,0.1602,0.138,0.89,0.35,100.0,0,0.0,N/A,N/A,N/A,Success
+w/o DRAM Tier,8192,0.1602,0.139,0.88,0.35,100.0,0,0.0,N/A,N/A,N/A,Success
+w/o Triton,8192,0.1602,0.136,0.87,0.35,100.0,0,0.0,N/A,N/A,N/A,Success
+Baseline (Native),8192,0.1485,0.05,0.65,0.27,100.0,0,0.0,N/A,N/A,N/A,Success
+Full System,16384,0.2969,0.462,3.18,2.72,100.0,36,66.02,1.004593,515.218,0.01,Success
+w/o Quant,16384,0.1929,0.398,3.01,2.54,100.0,20,0.04,N/A,0.165,0.01,Success
+w/o Prefetch,16384,0.2029,0.305,2.73,2.49,100.0,36,66.02,1.004733,0.165,0.01,Success
+w/o DRAM Tier,16384,0.1929,0.274,2.78,2.51,100.0,20,0.04,N/A,0.163,0.01,Success
+w/o Triton,16384,0.2969,0.318,2.79,2.5,100.0,36,66.02,1.005236,0.163,0.01,Success
+Baseline (Native),16384,0.2892,0.08,1.12,0.39,100.0,0,0.0,N/A,N/A,N/A,Success
+Full System,32768,0.547,0.755,2.74,2.48,100.0,68,199.02,1.005439,112.065,4.16,Success
+w/o Quant,32768,0.193,0.803,2.83,2.52,100.0,20,0.04,N/A,0.167,0.01,Success
+w/o Prefetch,32768,0.203,0.636,2.72,2.47,100.0,68,199.02,1.00429,0.356,4.16,Success
+w/o DRAM Tier,32768,0.193,0.548,2.79,2.49,100.0,20,0.04,N/A,0.166,0.01,Success
+w/o Triton,32768,0.547,0.658,2.72,2.49,100.0,68,199.02,1.004898,0.354,4.16,Success
+Baseline (Native),32768,0.5706,0.082,1.18,0.4,100.0,0,0.0,N/A,N/A,N/A,Success

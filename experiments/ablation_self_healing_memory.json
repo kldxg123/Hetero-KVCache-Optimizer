@@ -1,0 +1,1364 @@
+[
+  {
+    "config": "baseline",
+    "context_length": 4096,
+    "theory": {
+      "evicted_tokens": 0,
+      "eviction_pct": 0,
+      "per_layer_peak_kb": 0,
+      "hbm_pool_mb": 0,
+      "dram_storage_mb": 0,
+      "theoretical_decode_overhead_mb": 0
+    },
+    "measured": {
+      "config": "baseline",
+      "input_tokens": 4096,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 15.605,
+        "delta_gb": 1.416,
+        "time_s": 0.615
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 15.578,
+            "step_delta_gb": -0.027,
+            "time_ms": 81.69
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 19.14
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.83
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.76
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.83
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.83
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.81
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.78
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.78
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -1.406,
+            "time_ms": 18.86
+          }
+        ],
+        "avg_step_delta_gb": -1.268,
+        "max_step_delta_gb": -0.027,
+        "avg_time_ms": 25.13
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail4k",
+    "context_length": 4096,
+    "theory": {
+      "evicted_tokens": 0,
+      "per_layer_kb": 0,
+      "total_mb": 0
+    },
+    "measured": {
+      "config": "hk_tail4k",
+      "input_tokens": 4096,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 15.605,
+        "delta_gb": 1.407,
+        "time_s": 0.354
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 15.586,
+            "step_delta_gb": -0.019,
+            "time_ms": 21.9
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.43
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.36
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.38
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.39
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.4
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.39
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.32
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.34
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.426,
+            "step_delta_gb": -1.179,
+            "time_ms": 18.34
+          }
+        ],
+        "avg_step_delta_gb": -1.063,
+        "max_step_delta_gb": -0.019,
+        "avg_time_ms": 18.73
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail2k",
+    "context_length": 4096,
+    "theory": {
+      "evicted_tokens": 1984,
+      "eviction_pct": 48.4,
+      "per_layer_peak_kb": 15872.0,
+      "hbm_pool_mb": 115.6,
+      "dram_storage_mb": 27.1,
+      "theoretical_decode_overhead_mb": 15.5
+    },
+    "measured": {
+      "config": "hk_tail2k",
+      "input_tokens": 4096,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 15.5,
+        "delta_gb": 1.301,
+        "time_s": 0.428
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 15.487,
+            "step_delta_gb": -0.012,
+            "time_ms": 47.18
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.327,
+            "step_delta_gb": -1.172,
+            "time_ms": 51.6
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.327,
+            "step_delta_gb": -1.172,
+            "time_ms": 56.06
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.327,
+            "step_delta_gb": -1.172,
+            "time_ms": 60.39
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.327,
+            "step_delta_gb": -1.172,
+            "time_ms": 65.68
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.327,
+            "step_delta_gb": -1.172,
+            "time_ms": 69.77
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.328,
+            "step_delta_gb": -1.172,
+            "time_ms": 74.41
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.328,
+            "step_delta_gb": -1.172,
+            "time_ms": 82.33
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.328,
+            "step_delta_gb": -1.172,
+            "time_ms": 83.58
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.328,
+            "step_delta_gb": -1.172,
+            "time_ms": 87.65
+          }
+        ],
+        "avg_step_delta_gb": -1.056,
+        "max_step_delta_gb": -0.012,
+        "avg_time_ms": 67.86
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail1k",
+    "context_length": 4096,
+    "theory": {
+      "evicted_tokens": 3008,
+      "eviction_pct": 73.4,
+      "per_layer_peak_kb": 24064.0,
+      "hbm_pool_mb": 59.6,
+      "dram_storage_mb": 41.1,
+      "theoretical_decode_overhead_mb": 23.5
+    },
+    "measured": {
+      "config": "hk_tail1k",
+      "input_tokens": 4096,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 15.453,
+        "delta_gb": 1.254,
+        "time_s": 0.421
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 15.449,
+            "step_delta_gb": -0.003,
+            "time_ms": 45.67
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.288,
+            "step_delta_gb": -1.164,
+            "time_ms": 50.16
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.285,
+            "step_delta_gb": -1.167,
+            "time_ms": 54.39
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.285,
+            "step_delta_gb": -1.168,
+            "time_ms": 58.77
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.285,
+            "step_delta_gb": -1.168,
+            "time_ms": 63.54
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.285,
+            "step_delta_gb": -1.168,
+            "time_ms": 67.84
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.284,
+            "step_delta_gb": -1.169,
+            "time_ms": 71.91
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.284,
+            "step_delta_gb": -1.169,
+            "time_ms": 76.4
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.283,
+            "step_delta_gb": -1.169,
+            "time_ms": 80.9
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.283,
+            "step_delta_gb": -1.169,
+            "time_ms": 85.45
+          }
+        ],
+        "avg_step_delta_gb": -1.051,
+        "max_step_delta_gb": -0.003,
+        "avg_time_ms": 65.5
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk1k_NOheal",
+    "context_length": 4096,
+    "theory": {
+      "evicted_tokens": 3008,
+      "eviction_pct": 73.4,
+      "per_layer_peak_kb": 24064.0,
+      "hbm_pool_mb": 59.6,
+      "dram_storage_mb": 41.1,
+      "theoretical_decode_overhead_mb": 23.5
+    },
+    "measured": {
+      "config": "hk1k_NOheal",
+      "input_tokens": 4096,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 15.453,
+        "delta_gb": 1.254,
+        "time_s": 0.368
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 15.429,
+            "step_delta_gb": -0.024,
+            "time_ms": 34.39
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.267,
+            "step_delta_gb": -1.185,
+            "time_ms": 34.15
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.266,
+            "step_delta_gb": -1.187,
+            "time_ms": 34.01
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.265,
+            "step_delta_gb": -1.188,
+            "time_ms": 33.87
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.265,
+            "step_delta_gb": -1.188,
+            "time_ms": 34.4
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.264,
+            "step_delta_gb": -1.188,
+            "time_ms": 34.09
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.264,
+            "step_delta_gb": -1.189,
+            "time_ms": 34.0
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.264,
+            "step_delta_gb": -1.189,
+            "time_ms": 33.99
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.264,
+            "step_delta_gb": -1.189,
+            "time_ms": 34.07
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -1.189,
+            "time_ms": 33.95
+          }
+        ],
+        "avg_step_delta_gb": -1.072,
+        "max_step_delta_gb": -0.024,
+        "avg_time_ms": 34.09
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "baseline",
+    "context_length": 8192,
+    "theory": {
+      "evicted_tokens": 0,
+      "eviction_pct": 0,
+      "per_layer_peak_kb": 0,
+      "hbm_pool_mb": 0,
+      "dram_storage_mb": 0,
+      "theoretical_decode_overhead_mb": 0
+    },
+    "measured": {
+      "config": "baseline",
+      "input_tokens": 8192,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 17.011,
+        "delta_gb": 2.812,
+        "time_s": 0.705
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 16.957,
+            "step_delta_gb": -0.054,
+            "time_ms": 19.53
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.95
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 19.02
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.89
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.93
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.96
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.94
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.98
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.91
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -2.812,
+            "time_ms": 18.94
+          }
+        ],
+        "avg_step_delta_gb": -2.536,
+        "max_step_delta_gb": -0.054,
+        "avg_time_ms": 19.0
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail4k",
+    "context_length": 8192,
+    "theory": {
+      "evicted_tokens": 4032,
+      "eviction_pct": 49.2,
+      "per_layer_peak_kb": 32256.0,
+      "hbm_pool_mb": 227.6,
+      "dram_storage_mb": 55.1,
+      "theoretical_decode_overhead_mb": 31.5
+    },
+    "measured": {
+      "config": "hk_tail4k",
+      "input_tokens": 8192,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 16.796,
+        "delta_gb": 2.598,
+        "time_s": 0.735
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 16.773,
+            "step_delta_gb": -0.023,
+            "time_ms": 45.88
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.344,
+            "time_ms": 50.05
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.344,
+            "time_ms": 54.46
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 58.97
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 63.56
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 67.78
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 72.42
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 76.48
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 80.96
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.453,
+            "step_delta_gb": -2.343,
+            "time_ms": 85.3
+          }
+        ],
+        "avg_step_delta_gb": -2.111,
+        "max_step_delta_gb": -0.023,
+        "avg_time_ms": 65.59
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail2k",
+    "context_length": 8192,
+    "theory": {
+      "evicted_tokens": 6080,
+      "eviction_pct": 74.2,
+      "per_layer_peak_kb": 48640.0,
+      "hbm_pool_mb": 115.6,
+      "dram_storage_mb": 83.1,
+      "theoretical_decode_overhead_mb": 47.5
+    },
+    "measured": {
+      "config": "hk_tail2k",
+      "input_tokens": 8192,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 16.687,
+        "delta_gb": 2.488,
+        "time_s": 0.833
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 16.68,
+            "step_delta_gb": -0.007,
+            "time_ms": 46.11
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.36,
+            "step_delta_gb": -2.327,
+            "time_ms": 50.13
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.36,
+            "step_delta_gb": -2.327,
+            "time_ms": 54.38
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.361,
+            "step_delta_gb": -2.326,
+            "time_ms": 58.89
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.361,
+            "step_delta_gb": -2.326,
+            "time_ms": 63.76
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.362,
+            "step_delta_gb": -2.325,
+            "time_ms": 67.51
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.362,
+            "step_delta_gb": -2.325,
+            "time_ms": 72.13
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.361,
+            "step_delta_gb": -2.327,
+            "time_ms": 76.58
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.36,
+            "step_delta_gb": -2.327,
+            "time_ms": 81.16
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.361,
+            "step_delta_gb": -2.326,
+            "time_ms": 85.48
+          }
+        ],
+        "avg_step_delta_gb": -2.094,
+        "max_step_delta_gb": -0.007,
+        "avg_time_ms": 65.61
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail1k",
+    "context_length": 8192,
+    "theory": {
+      "evicted_tokens": 7104,
+      "eviction_pct": 86.7,
+      "per_layer_peak_kb": 56832.0,
+      "hbm_pool_mb": 59.6,
+      "dram_storage_mb": 97.1,
+      "theoretical_decode_overhead_mb": 55.5
+    },
+    "measured": {
+      "config": "hk_tail1k",
+      "input_tokens": 8192,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 16.636,
+        "delta_gb": 2.437,
+        "time_s": 0.745
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 16.637,
+            "step_delta_gb": 0.001,
+            "time_ms": 47.03
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.316,
+            "step_delta_gb": -2.319,
+            "time_ms": 50.05
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.316,
+            "step_delta_gb": -2.32,
+            "time_ms": 54.28
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.315,
+            "step_delta_gb": -2.321,
+            "time_ms": 58.92
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.315,
+            "step_delta_gb": -2.32,
+            "time_ms": 63.98
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.316,
+            "step_delta_gb": -2.32,
+            "time_ms": 67.78
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.315,
+            "step_delta_gb": -2.32,
+            "time_ms": 72.17
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.315,
+            "step_delta_gb": -2.321,
+            "time_ms": 76.63
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.315,
+            "step_delta_gb": -2.321,
+            "time_ms": 80.92
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.314,
+            "step_delta_gb": -2.322,
+            "time_ms": 85.46
+          }
+        ],
+        "avg_step_delta_gb": -2.088,
+        "max_step_delta_gb": 0.001,
+        "avg_time_ms": 65.72
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk1k_NOheal",
+    "context_length": 8192,
+    "theory": {
+      "evicted_tokens": 7104,
+      "eviction_pct": 86.7,
+      "per_layer_peak_kb": 56832.0,
+      "hbm_pool_mb": 59.6,
+      "dram_storage_mb": 97.1,
+      "theoretical_decode_overhead_mb": 55.5
+    },
+    "measured": {
+      "config": "hk1k_NOheal",
+      "input_tokens": 8192,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 16.636,
+        "delta_gb": 2.437,
+        "time_s": 0.749
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 16.585,
+            "step_delta_gb": -0.051,
+            "time_ms": 35.1
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.264,
+            "step_delta_gb": -2.372,
+            "time_ms": 34.26
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.264,
+            "step_delta_gb": -2.372,
+            "time_ms": 34.16
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 34.03
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 34.49
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 34.04
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 33.97
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 33.96
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 34.05
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.263,
+            "step_delta_gb": -2.372,
+            "time_ms": 33.99
+          }
+        ],
+        "avg_step_delta_gb": -2.14,
+        "max_step_delta_gb": -0.051,
+        "avg_time_ms": 34.2
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "baseline",
+    "context_length": 16384,
+    "theory": {
+      "evicted_tokens": 0,
+      "eviction_pct": 0,
+      "per_layer_peak_kb": 0,
+      "hbm_pool_mb": 0,
+      "dram_storage_mb": 0,
+      "theoretical_decode_overhead_mb": 0
+    },
+    "measured": {
+      "config": "baseline",
+      "input_tokens": 16384,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 19.824,
+        "delta_gb": 5.625,
+        "time_s": 1.542
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 19.715,
+            "step_delta_gb": -0.109,
+            "time_ms": 19.3
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 19.03
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.94
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.94
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.91
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 19.97
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.97
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.84
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.88
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.199,
+            "step_delta_gb": -5.624,
+            "time_ms": 18.95
+          }
+        ],
+        "avg_step_delta_gb": -5.072,
+        "max_step_delta_gb": -0.109,
+        "avg_time_ms": 19.07
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail4k",
+    "context_length": 16384,
+    "theory": {
+      "evicted_tokens": 12224,
+      "eviction_pct": 74.6,
+      "per_layer_peak_kb": 97792.0,
+      "hbm_pool_mb": 227.6,
+      "dram_storage_mb": 167.1,
+      "theoretical_decode_overhead_mb": 95.5
+    },
+    "measured": {
+      "config": "hk_tail4k",
+      "input_tokens": 16384,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 19.171,
+        "delta_gb": 4.973,
+        "time_s": 1.78
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 19.156,
+            "step_delta_gb": -0.016,
+            "time_ms": 63.51
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.515,
+            "step_delta_gb": -4.656,
+            "time_ms": 60.79
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.515,
+            "step_delta_gb": -4.656,
+            "time_ms": 60.78
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.516,
+            "step_delta_gb": -4.655,
+            "time_ms": 62.45
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.516,
+            "step_delta_gb": -4.655,
+            "time_ms": 64.31
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.516,
+            "step_delta_gb": -4.655,
+            "time_ms": 68.14
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.517,
+            "step_delta_gb": -4.655,
+            "time_ms": 72.32
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.516,
+            "step_delta_gb": -4.655,
+            "time_ms": 76.84
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.516,
+            "step_delta_gb": -4.656,
+            "time_ms": 81.37
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.516,
+            "step_delta_gb": -4.656,
+            "time_ms": 85.86
+          }
+        ],
+        "avg_step_delta_gb": -4.192,
+        "max_step_delta_gb": -0.016,
+        "avg_time_ms": 69.64
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail2k",
+    "context_length": 16384,
+    "theory": {
+      "evicted_tokens": 14272,
+      "eviction_pct": 87.1,
+      "per_layer_peak_kb": 114176.0,
+      "hbm_pool_mb": 115.6,
+      "dram_storage_mb": 195.1,
+      "theoretical_decode_overhead_mb": 111.5
+    },
+    "measured": {
+      "config": "hk_tail2k",
+      "input_tokens": 16384,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 19.063,
+        "delta_gb": 4.864,
+        "time_s": 1.62
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 19.064,
+            "step_delta_gb": 0.001,
+            "time_ms": 64.98
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.422,
+            "step_delta_gb": -4.64,
+            "time_ms": 63.08
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.422,
+            "step_delta_gb": -4.641,
+            "time_ms": 64.51
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.421,
+            "step_delta_gb": -4.641,
+            "time_ms": 65.91
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.421,
+            "step_delta_gb": -4.641,
+            "time_ms": 67.73
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.421,
+            "step_delta_gb": -4.641,
+            "time_ms": 69.15
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.421,
+            "step_delta_gb": -4.641,
+            "time_ms": 72.33
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.421,
+            "step_delta_gb": -4.641,
+            "time_ms": 76.81
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.422,
+            "step_delta_gb": -4.641,
+            "time_ms": 81.31
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.422,
+            "step_delta_gb": -4.641,
+            "time_ms": 86.01
+          }
+        ],
+        "avg_step_delta_gb": -4.177,
+        "max_step_delta_gb": 0.001,
+        "avg_time_ms": 71.18
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk_tail1k",
+    "context_length": 16384,
+    "theory": {
+      "evicted_tokens": 15296,
+      "eviction_pct": 93.4,
+      "per_layer_peak_kb": 122368.0,
+      "hbm_pool_mb": 59.6,
+      "dram_storage_mb": 209.1,
+      "theoretical_decode_overhead_mb": 119.5
+    },
+    "measured": {
+      "config": "hk_tail1k",
+      "input_tokens": 16384,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 19.008,
+        "delta_gb": 4.81,
+        "time_s": 1.625
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 19.017,
+            "step_delta_gb": 0.009,
+            "time_ms": 66.76
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 64.63
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 66.1
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 67.55
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 69.42
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 71.03
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 72.78
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 76.69
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 80.9
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.377,
+            "step_delta_gb": -4.632,
+            "time_ms": 85.6
+          }
+        ],
+        "avg_step_delta_gb": -4.168,
+        "max_step_delta_gb": 0.009,
+        "avg_time_ms": 72.15
+      },
+      "oom": false
+    },
+    "oom": false
+  },
+  {
+    "config": "hk1k_NOheal",
+    "context_length": 16384,
+    "theory": {
+      "evicted_tokens": 15296,
+      "eviction_pct": 93.4,
+      "per_layer_peak_kb": 122368.0,
+      "hbm_pool_mb": 59.6,
+      "dram_storage_mb": 209.1,
+      "theoretical_decode_overhead_mb": 119.5
+    },
+    "measured": {
+      "config": "hk1k_NOheal",
+      "input_tokens": 16384,
+      "num_decode_steps": 10,
+      "prefill": {
+        "peak_gb": 19.008,
+        "delta_gb": 4.81,
+        "time_s": 1.626
+      },
+      "decode": {
+        "steps": [
+          {
+            "step": 0,
+            "step_peak_gb": 18.903,
+            "step_delta_gb": -0.106,
+            "time_ms": 35.15
+          },
+          {
+            "step": 1,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.25
+          },
+          {
+            "step": 2,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.09
+          },
+          {
+            "step": 3,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.05
+          },
+          {
+            "step": 4,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.33
+          },
+          {
+            "step": 5,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.1
+          },
+          {
+            "step": 6,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 33.97
+          },
+          {
+            "step": 7,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.01
+          },
+          {
+            "step": 8,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 35.71
+          },
+          {
+            "step": 9,
+            "step_peak_gb": 14.262,
+            "step_delta_gb": -4.746,
+            "time_ms": 34.14
+          }
+        ],
+        "avg_step_delta_gb": -4.282,
+        "max_step_delta_gb": -0.106,
+        "avg_time_ms": 34.38
+      },
+      "oom": false
+    },
+    "oom": false
+  }
+]

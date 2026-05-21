@@ -19,7 +19,7 @@ from src.memory.manager import HeteroKVManager
 
 # Optional Triton fused operator (falls back to standard matmul if unavailable)
 try:
-    from src.quantization.fused_dequant_attn import (
+    from src.quantization.kernels.fused_dequant_attn import (
         fused_dequant_attention,
         fused_dequant_attn_forward,
         fused_dequant_attn_decode,
@@ -53,6 +53,8 @@ class FusedHeteroCache(DynamicCache):
         enable_prefetch: bool = True,
         enable_triton: bool = True,
         bandwidth_limiter=None,
+        self_healing: bool = True,
+        adaptive_self_healing: bool = False,
     ):
         super().__init__()
 
@@ -65,6 +67,8 @@ class FusedHeteroCache(DynamicCache):
         self.enable_prefetch = enable_prefetch
         self.group_size = group_size
         self._bandwidth_limiter = bandwidth_limiter
+        self.self_healing = self_healing
+        self.adaptive_self_healing = adaptive_self_healing
 
         # Deferred initialization: num_layers is set on first update
         self._num_layers = num_layers
@@ -73,12 +77,17 @@ class FusedHeteroCache(DynamicCache):
         # Global sequence length tracker for RoPE alignment
         self.real_seq_len: int = 0
 
+        # Self-healing: pre-computed DRAM swap-in token count
+        self._swap_in_tokens: int = 0
+
         print(
             f"[FusedHeteroCache] Initialized | "
             f"sink={sink_tokens} tail={keep_tail} chunk={chunk_size} "
             f"quant={'ON' if enable_quant else 'OFF'} "
             f"prefetch={'ON' if enable_prefetch else 'OFF'} "
-            f"triton={'ON' if self.enable_triton else 'OFF'}"
+            f"triton={'ON' if self.enable_triton else 'OFF'} "
+            f"self_healing={'ON' if self_healing else 'OFF'}"
+            f"{f' adaptive={adaptive_self_healing}' if adaptive_self_healing else ''}"
         )
 
     def _ensure_manager(self, layer_idx: int) -> HeteroKVManager:
@@ -127,20 +136,38 @@ class FusedHeteroCache(DynamicCache):
             seq_offset=self.real_seq_len,
         )
 
+        # Self-healing: swap in DRAM tokens during decode
+        if mode == "decode" and self.self_healing and self._swap_in_tokens > 0:
+            if self.adaptive_self_healing:
+                # TRUE dynamic window: retrieve only top-w_t chunks by attention score
+                # w_t is computed by AdaptivePrefetchController based on σ(A_t)
+                dram_k, dram_v, count = manager.decompress_dram_chunks_adaptive(
+                    layer_idx, window_size=None  # None = use adaptive controller
+                )
+            else:
+                # Full retrieval: decompress ALL DRAM chunks (100% recall, O(N) memory)
+                dram_k, dram_v, count = manager.decompress_dram_chunks(layer_idx)
+            if dram_k is not None and count > 0:
+                out_k = torch.cat([dram_k, out_k], dim=-2)
+                out_v = torch.cat([dram_v, out_v], dim=-2)
+
         if layer_idx == 0:
             self.real_seq_len += new_len
+            # After layer 0 decode, refresh DRAM token count for next step
+            if mode == "decode" and self.self_healing:
+                self._refresh_swap_count()
 
         return out_k, out_v
 
     def get_seq_length(self, layer_idx: int = 0) -> int:
-        # Report the physical cache size, not total seen tokens.
-        # This is critical for correct attention mask dimensions in transformers 4.57+
+        # Report HBM pool + DRAM swap-in tokens so attention mask dimensions match.
         if self._manager is None:
             return 0
         k_cache = self._manager._key_cache
         if layer_idx >= len(k_cache) or k_cache[layer_idx] is None:
             return 0
-        return k_cache[layer_idx].shape[-2]
+        hbm_size = k_cache[layer_idx].shape[-2]
+        return hbm_size + self._swap_in_tokens
 
     @property
     def seen_tokens(self) -> int:
@@ -156,7 +183,7 @@ class FusedHeteroCache(DynamicCache):
         """
         Return (kv_length, kv_offset) for correct mask dimensions.
         For prefill chunks: return (chunk_size, 0).
-        For decode: return (physical_pool_size + 1, 0) to match actual KV after update.
+        For decode: return (hbm_pool + dram_swap + 1, 0) to match extended KV.
         """
         if self._manager is None:
             return cache_position.shape[0], 0
@@ -164,13 +191,16 @@ class FusedHeteroCache(DynamicCache):
         if layer_idx >= len(k_cache) or k_cache[layer_idx] is None:
             return cache_position.shape[0], 0
         physical_size = k_cache[layer_idx].shape[-2]
-        # Return the size AFTER the update (includes new token for decode)
-        # The +1 accounts for the token being added during this forward pass
         query_len = cache_position.shape[0]
         if query_len > 1:  # Prefill chunk: mask width = chunk_size
             return query_len, 0
-        else:  # Decode: mask width = current pool size + new token
-            return physical_size + 1, 0
+        else:  # Decode: mask width = HBM + DRAM swap-in + new token
+            return physical_size + self._swap_in_tokens + 1, 0
+
+    def _refresh_swap_count(self) -> None:
+        """Pre-compute DRAM swap-in token count for the next decode step."""
+        if self._manager is not None:
+            self._swap_in_tokens = self._manager.count_dram_tokens(layer_idx=0)
 
     # ------------------------------------------------------------------
     # Tiered storage passthrough API
@@ -306,6 +336,7 @@ class ChunkedPrefillEngine:
 
         print(f"[ChunkedPrefill] total_tokens={total_len} chunk_size={self.chunk_size}")
 
+        chunk_idx = 0
         for start in range(0, total_len, self.chunk_size):
             end = min(start + self.chunk_size, total_len)
             chunk_ids = input_ids[:, start:end]
@@ -354,7 +385,10 @@ class ChunkedPrefillEngine:
             del chunk_ids, chunk_pos
             if chunk_mask is not None:
                 del chunk_mask
-            gc.collect()
+            # Trigger GC every 4 chunks to reclaim transient tensor memory
+            chunk_idx += 1
+            if chunk_idx % 4 == 0 or end == total_len:
+                gc.collect()
 
         print(f"[ChunkedPrefill] Done. real_seq_len={self.cache.real_seq_len}")
 
@@ -374,6 +408,7 @@ def build_fused_cache(
     enable_prefetch: bool = True,
     enable_triton: bool = True,
     bandwidth_limiter=None,
+    self_healing: bool = True,
 ) -> FusedHeteroCache:
     """Factory: create a fully-configured FusedHeteroCache instance."""
     return FusedHeteroCache(
@@ -387,4 +422,5 @@ def build_fused_cache(
         enable_prefetch=enable_prefetch,
         enable_triton=enable_triton,
         bandwidth_limiter=bandwidth_limiter,
+        self_healing=self_healing,
     )

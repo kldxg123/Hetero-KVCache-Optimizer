@@ -5,7 +5,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # 确保能找到 src 包
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.core.engine_wrapper import HeteroKVCache
+from src.core.engine_wrapper import FusedHeteroCache as HeteroKVCache
 
 
 def test_generation():

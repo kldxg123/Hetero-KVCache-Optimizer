@@ -97,7 +97,7 @@ The most important validation of our tiered storage design is whether it remains
 Figure~\ref{fig:pcie_scaling} presents the bandwidth-limited TPOT sweep. We compare two policies:
 \begin{itemize}
     \item \textbf{Naive BF16 Swapping}: Every token eviction triggers a full-precision HBM$\leftrightarrow$DRAM transfer.
-    \item \textbf{Hetero-KV}: Uses 4-bit quantization ($\sim$4.5$\times$ compression) and the Transient Cache Interception to overlap prefetch with compute.
+    \item \textbf{Hetero-KV}: Uses 4-bit quantization ($\sim$2$\times$ storage compression, 48\% volume reduction via uint8 storage) and the Transient Cache Interception to overlap prefetch with compute.
 \end{itemize}
 
 At a server-grade 32~GB/s link, both policies are compute-bound (TPOT $\approx$ 33~ms). As bandwidth drops to 16~GB/s (RTX 4060 Ti territory), naive swapping degrades to 42~ms, whereas Hetero-KV stays at 33.8~ms---within the interactive threshold. At 8~GB/s (mobile edge), naive swapping collapses to 58~ms, while Hetero-KV remains at 35~ms. This gap validates our core architectural decision: \textbf{tiered storage is only practical when compression and prefetching hide the bandwidth gap}.

@@ -305,7 +305,7 @@ def fused_dequant_attn_decode(
                 Vq_3d.stride(0), Vq_3d.stride(1), Vq_3d.stride(2),
                 out.stride(0), out.stride(1), out.stride(2),
                 seq_k=seq_k,
-                seq_q=seq_q,
+                seq_q=1,
                 sm_scale=sm_scale,
                 BLOCK_D=BLOCK_D,
                 BLOCK_N=BLOCK_N,
