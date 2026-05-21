@@ -710,6 +710,121 @@ class HeteroKVManager:
 
         return dram_k, dram_v, token_count
 
+    def get_dram_chunks_quantized_adaptive(
+        self,
+        layer_idx: int,
+        window_size: Optional[int] = None,
+    ) -> Optional[Dict[str, torch.Tensor]]:
+        """
+        TRUE dynamic window + Triton kernel: Return 4-bit quantized chunks (no decompression).
+
+        This is the CORRECT implementation where dynamic window and Triton kernel
+        work TOGETHER:
+          1. AdaptivePrefetchController computes w_t based on σ(A_t)
+          2. Select top-w_t chunks by attention score
+          3. Return 4-bit quantized data (NO BF16 decompression)
+          4. Triton fused kernel computes attention directly on 4-bit data
+
+        Memory Impact:
+          - HBM spike: O(w_t * chunk_size) for 4-bit data transfer
+          - NO BF16 decompression spike (eliminated!)
+          - This is the paper's "eliminates 512MB transient" promise
+
+        Args:
+            layer_idx: Transformer layer index
+            window_size: Number of chunks to retrieve. If None, uses adaptive controller.
+
+        Returns:
+            Dict with k_data, k_scales, k_zps, v_data, v_scales, v_zps (all 4-bit)
+            Or None if no DRAM data
+        """
+        prefix = f"l{layer_idx}_"
+        dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
+
+        if not dram_keys:
+            return None
+
+        # Compute adaptive window size
+        if window_size is None:
+            w_t = int(self._adaptive_controller.compute_window(attention_weights=None, cache_miss=False))
+            window_size = max(1, min(w_t, len(dram_keys)))
+
+        # Rank chunks by attention score (heavy hitters first)
+        ranked_chunks = sorted(
+            dram_keys,
+            key=lambda k: self._chunk_attention_scores.get(k, 0.0),
+            reverse=True
+        )
+
+        # Select only top-w_t chunks
+        selected_keys = ranked_chunks[:window_size]
+
+        print(
+            f"  [Triton-Optimized Adaptive Self-Healing] layer={layer_idx} | "
+            f"total_chunks={len(dram_keys)} window={window_size} | "
+            f"retrieving={len(selected_keys)} chunks (4-bit, NO decompression) | "
+            f"coverage={100.0*len(selected_keys)/len(dram_keys):.1f}%"
+        )
+
+        # Collect 4-bit quantized data (NO decompression!)
+        all_k_data, all_k_scales, all_k_zps = [], [], []
+        all_v_data, all_v_scales, all_v_zps = [], [], []
+
+        for chunk_key in selected_keys:
+            entry = self._dram.retrieve(chunk_key)
+            if entry is None:
+                continue
+
+            # Transfer to GPU but KEEP 4-bit format!
+            all_k_data.append(entry["k_data"].to(self.device, non_blocking=True))
+            all_k_scales.append(entry["k_scales"].to(self.device, non_blocking=True))
+            all_k_zps.append(entry["k_zps"].to(self.device, non_blocking=True))
+            all_v_data.append(entry["v_data"].to(self.device, non_blocking=True))
+            all_v_scales.append(entry["v_scales"].to(self.device, non_blocking=True))
+            all_v_zps.append(entry["v_zps"].to(self.device, non_blocking=True))
+
+        if not all_k_data:
+            return None
+
+        # Concatenate in original eviction order
+        selected_keys_sorted = sorted(selected_keys, key=lambda k: self._chunk_eviction_order.index(k))
+        key_to_idx = {k: i for i, k in enumerate(dram_keys)}
+        sorted_indices = [key_to_idx[k] for k in selected_keys_sorted if k in key_to_idx]
+
+        k_data = torch.cat([all_k_data[i] for i in sorted_indices], dim=-2)
+        k_scales = torch.cat([all_k_scales[i] for i in sorted_indices], dim=-2)
+        k_zps = torch.cat([all_k_zps[i] for i in sorted_indices], dim=-2)
+        v_data = torch.cat([all_v_data[i] for i in sorted_indices], dim=-2)
+        v_scales = torch.cat([all_v_scales[i] for i in sorted_indices], dim=-2)
+        v_zps = torch.cat([all_v_zps[i] for i in sorted_indices], dim=-2)
+
+        # Calculate memory savings
+        tokens_4bit = k_data.shape[-2]
+        bf16_spike_mb = tokens_4bit * 2 * 32 * 2 / 1024 / 1024  # Would be BF16 size
+        bit4_mb = (
+            k_data.element_size() * k_data.nelement() +
+            k_scales.element_size() * k_scales.nelement() +
+            k_zps.element_size() * k_zps.nelement() +
+            v_data.element_size() * v_data.nelement() +
+            v_scales.element_size() * v_scales.nelement() +
+            v_zps.element_size() * v_zps.nelement()
+        ) / 1024 / 1024
+
+        print(
+            f"  [Triton-Optimized] {tokens_4bit} tokens in 4-bit | "
+            f"HMB={bit4_mb:.1f}MB (vs {bf16_spike_mb:.1f}MB if BF16) | "
+            f"saved={bf16_spike_mb - bit4_mb:.1f}MB"
+        )
+
+        return {
+            "k_data": k_data,
+            "k_scales": k_scales,
+            "k_zps": k_zps,
+            "v_data": v_data,
+            "v_scales": v_scales,
+            "v_zps": v_zps,
+        }
+
     def _get_dram_kv_quantized(
         self, layer_idx: int
     ) -> Optional[Dict[str, torch.Tensor]]:

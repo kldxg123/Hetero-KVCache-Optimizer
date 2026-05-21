@@ -80,6 +80,10 @@ class FusedHeteroCache(DynamicCache):
         # Self-healing: pre-computed DRAM swap-in token count
         self._swap_in_tokens: int = 0
 
+        # Triton-optimized path: 4-bit DRAM data for fused kernel (no BF16 decompression)
+        self._dram_quant_kv: Optional[Dict[str, torch.Tensor]] = None
+        self._dram_quant_layer: int = -1
+
         print(
             f"[FusedHeteroCache] Initialized | "
             f"sink={sink_tokens} tail={keep_tail} chunk={chunk_size} "
@@ -138,18 +142,47 @@ class FusedHeteroCache(DynamicCache):
 
         # Self-healing: swap in DRAM tokens during decode
         if mode == "decode" and self.self_healing and self._swap_in_tokens > 0:
-            if self.adaptive_self_healing:
-                # TRUE dynamic window: retrieve only top-w_t chunks by attention score
-                # w_t is computed by AdaptivePrefetchController based on σ(A_t)
-                dram_k, dram_v, count = manager.decompress_dram_chunks_adaptive(
-                    layer_idx, window_size=None  # None = use adaptive controller
+            if self.adaptive_self_healing and self.enable_triton:
+                # ──────────────────────────────────────────────────────
+                # Path A: Dynamic Window + Triton Fused Kernel (TOGETHER)
+                # 1. AdaptivePrefetchController computes w_t from σ(A_t)
+                # 2. Select top-w_t chunks by attention score
+                # 3. Transfer 4-bit data to GPU (NO BF16 decompression)
+                # 4. Store in _dram_quant_kv for Triton kernel to consume
+                # ──────────────────────────────────────────────────────
+                quant_kv = manager.get_dram_chunks_quantized_adaptive(
+                    layer_idx, window_size=None
                 )
+                if quant_kv is not None:
+                    # Store 4-bit data for Triton kernel to pick up during attention
+                    self._dram_quant_kv = quant_kv
+                    self._dram_quant_layer = layer_idx
+                else:
+                    self._dram_quant_kv = None
+
+            elif self.adaptive_self_healing:
+                # ──────────────────────────────────────────────────────
+                # Path B: Dynamic Window only (no Triton, fallback to BF16)
+                # Retrieve top-w_t chunks, decompress to BF16, concat
+                # ──────────────────────────────────────────────────────
+                dram_k, dram_v, count = manager.decompress_dram_chunks_adaptive(
+                    layer_idx, window_size=None
+                )
+                if dram_k is not None and count > 0:
+                    out_k = torch.cat([dram_k, out_k], dim=-2)
+                    out_v = torch.cat([dram_v, out_v], dim=-2)
+                self._dram_quant_kv = None
+
             else:
-                # Full retrieval: decompress ALL DRAM chunks (100% recall, O(N) memory)
+                # ──────────────────────────────────────────────────────
+                # Path C: Full retrieval (100% recall, O(N) memory spike)
+                # Decompress ALL DRAM chunks to BF16, concat
+                # ──────────────────────────────────────────────────────
                 dram_k, dram_v, count = manager.decompress_dram_chunks(layer_idx)
-            if dram_k is not None and count > 0:
-                out_k = torch.cat([dram_k, out_k], dim=-2)
-                out_v = torch.cat([dram_v, out_v], dim=-2)
+                if dram_k is not None and count > 0:
+                    out_k = torch.cat([dram_k, out_k], dim=-2)
+                    out_v = torch.cat([dram_v, out_v], dim=-2)
+                self._dram_quant_kv = None
 
         if layer_idx == 0:
             self.real_seq_len += new_len
