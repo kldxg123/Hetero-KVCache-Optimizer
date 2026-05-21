@@ -602,6 +602,172 @@ class HeteroKVManager:
 
         return dram_k, dram_v, token_count
 
+    def decompress_dram_chunks_adaptive(
+        self,
+        layer_idx: int,
+        window_size: Optional[int] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], int]:
+        """
+        TRUE adaptive self-healing: decompress only TOP-W DRAM chunks based on attention scores.
+
+        This implements the dynamic window w_t described in the paper:
+          w_t = w_min + (σ_t / σ_ref - 1) · α + β · miss_rate_t
+
+        Args:
+            layer_idx: Transformer layer index
+            window_size: Number of chunks to retrieve. If None, uses AdaptivePrefetchController.
+
+        Returns:
+            (dram_k, dram_v, retrieved_count) or (None, None, 0) if no DRAM data
+
+        Memory Impact:
+          - Retrieves only top-w_t chunks (NOT all chunks)
+          - HBM spike = O(w_t * chunk_size), NOT O(total_chunks)
+          - This is the BOUNDED O(w_t) transient promised in the paper
+
+        Recall Impact:
+          - If needle token is outside top-w_t chunks: RETRIEVAL FAILURE
+          - Expected NIAH recall: roughly w_t / total_chunks (NOT 100%)
+        """
+        prefix = f"l{layer_idx}_"
+        dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
+
+        if not dram_keys:
+            return None, None, 0
+
+        # Compute adaptive window size using AdaptivePrefetchController
+        if window_size is None:
+            # Reuse the same controller for self-healing window sizing
+            w_t = int(self._adaptive_controller.compute_window(attention_weights=None, cache_miss=False))
+            window_size = max(1, min(w_t, len(dram_keys)))
+
+        # Rank chunks by attention score (heavy hitters first)
+        ranked_chunks = sorted(
+            dram_keys,
+            key=lambda k: self._chunk_attention_scores.get(k, 0.0),
+            reverse=True  # Highest scores first
+        )
+
+        # Select only top-w_t chunks
+        selected_keys = ranked_chunks[:window_size]
+
+        print(
+            f"  [Adaptive Self-Healing] layer={layer_idx} | "
+            f"total_chunks={len(dram_keys)} window={window_size} | "
+            f"retrieving={len(selected_keys)} chunks | "
+            f"coverage={100.0*len(selected_keys)/len(dram_keys):.1f}%"
+        )
+
+        # Decompress selected chunks
+        dram_k_parts, dram_v_parts = [], []
+        for chunk_key in selected_keys:
+            entry = self._dram.retrieve(chunk_key)
+            if entry is None:
+                continue
+
+            try:
+                q_k = entry["k_data"].to(self.device, non_blocking=True)
+                s_k = entry["k_scales"].to(self.device, non_blocking=True)
+                z_k = entry["k_zps"].to(self.device, non_blocking=True)
+                q_v = entry["v_data"].to(self.device, non_blocking=True)
+                s_v = entry["v_scales"].to(self.device, non_blocking=True)
+                z_v = entry["v_zps"].to(self.device, non_blocking=True)
+
+                restored_k = self._compressor.decompress(q_k, s_k, z_k, target_dtype=torch.bfloat16)
+                restored_v = self._compressor.decompress(q_v, s_v, z_v, target_dtype=torch.bfloat16)
+
+                dram_k_parts.append(restored_k)
+                dram_v_parts.append(restored_v)
+            except Exception as e:
+                print(f"  [Warning] Failed to decompress {chunk_key}: {e}")
+                continue
+
+        if not dram_k_parts:
+            return None, None, 0
+
+        # Concatenate in original eviction order (preserve temporal sequence)
+        selected_keys_sorted = sorted(selected_keys, key=lambda k: self._chunk_eviction_order.index(k))
+
+        # Re-sort parts to match temporal order
+        key_to_part_k = dict(zip(selected_keys, dram_k_parts))
+        key_to_part_v = dict(zip(selected_keys, dram_v_parts))
+
+        dram_k_parts_sorted = [key_to_part_k[k] for k in selected_keys_sorted if k in key_to_part_k]
+        dram_v_parts_sorted = [key_to_part_v[k] for k in selected_keys_sorted if k in key_to_part_v]
+
+        dram_k = torch.cat(dram_k_parts_sorted, dim=-2)
+        dram_v = torch.cat(dram_v_parts_sorted, dim=-2)
+        token_count = dram_k.shape[-2]
+
+        # Calculate HBM memory spike
+        spike_mb = dram_k.element_size() * dram_k.nelement() / 1024 / 1024
+        spike_mb += dram_v.element_size() * dram_v.nelement() / 1024 / 1024
+
+        print(
+            f"  [Adaptive Self-Healing] Retrieved {token_count} tokens | "
+            f"HBM_spike={spike_mb:.1f}MB (vs {len(dram_keys)*2048*16/1024/1024:.1f}MB full)"
+        )
+
+        return dram_k, dram_v, token_count
+
+    def _get_dram_kv_quantized(
+        self, layer_idx: int
+    ) -> Optional[Dict[str, torch.Tensor]]:
+        """
+        Get DRAM KV data in 4-bit quantized format (no decompression).
+
+        Used by Triton fused kernel to avoid BF16 intermediate allocation.
+
+        Returns:
+            Dict with keys: k_data, k_scales, k_zps, v_data, v_scales, v_zps
+            Or None if no DRAM data
+        """
+        prefix = f"l{layer_idx}_"
+        dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
+
+        if not dram_keys:
+            return None
+
+        all_k_data, all_k_scales, all_k_zps = [], [], []
+        all_v_data, all_v_scales, all_v_zps = [], [], []
+
+        for chunk_key in dram_keys:
+            entry = self._dram.retrieve(chunk_key)
+            if entry is None:
+                continue
+
+            all_k_data.append(entry["k_data"])
+            all_k_scales.append(entry["k_scales"])
+            all_k_zps.append(entry["k_zps"])
+            all_v_data.append(entry["v_data"])
+            all_v_scales.append(entry["v_scales"])
+            all_v_zps.append(entry["v_zps"])
+
+        if not all_k_data:
+            return None
+
+        # Concatenate in eviction order
+        sorted_keys = sorted(dram_keys, key=lambda k: self._chunk_eviction_order.index(k))
+
+        key_to_idx = {k: i for i, k in enumerate(dram_keys)}
+        sorted_indices = [key_to_idx[k] for k in sorted_keys if k in key_to_idx]
+
+        k_data = torch.cat([all_k_data[i] for i in sorted_indices], dim=-2)
+        k_scales = torch.cat([all_k_scales[i] for i in sorted_indices], dim=-2)
+        k_zps = torch.cat([all_k_zps[i] for i in sorted_indices], dim=-2)
+        v_data = torch.cat([all_v_data[i] for i in sorted_indices], dim=-2)
+        v_scales = torch.cat([all_v_scales[i] for i in sorted_indices], dim=-2)
+        v_zps = torch.cat([all_v_zps[i] for i in sorted_indices], dim=-2)
+
+        return {
+            "k_data": k_data,
+            "k_scales": k_scales,
+            "k_zps": k_zps,
+            "v_data": v_data,
+            "v_scales": v_scales,
+            "v_zps": v_zps,
+        }
+
     def count_dram_tokens(self, layer_idx: int = 0) -> int:
         """Count total tokens in DRAM for a specific layer."""
         prefix = f"l{layer_idx}_"
@@ -621,7 +787,11 @@ class HeteroKVManager:
         k_chunk: torch.Tensor,
         v_chunk: torch.Tensor,
     ) -> None:
-        """Compress a KV chunk and move it to DRAM via DRAMStorageManager (pinned CPU memory)."""
+        """
+        Compress a KV chunk and move it to DRAM via DRAMStorageManager (pinned CPU memory).
+
+        Enhanced: tracks chunk metadata for adaptive self-healing (attention scores, eviction order).
+        """
         chunk_key = f"l{layer_idx}_e{self._eviction_counter}"
 
         q_k, k_scales, k_zps = self._compressor.compress(k_chunk)
@@ -639,6 +809,20 @@ class HeteroKVManager:
         # DRAMStorageManager handles .cpu().pin_memory() internally
         self._dram.store_entry(chunk_key, entry)
 
+        # Track metadata for adaptive self-healing
+        self._chunk_eviction_order.append(chunk_key)
+
+        # Compute and store chunk attention score (average of oracle scores for tokens in this chunk)
+        if self._oracle.token_scores is not None:
+            start_token_idx = self._eviction_counter * k_chunk.shape[-2]
+            end_token_idx = start_token_idx + k_chunk.shape[-2]
+            chunk_scores = self._oracle.token_scores[start_token_idx:end_token_idx]
+            chunk_avg_score = float(chunk_scores.mean().item()) if len(chunk_scores) > 0 else 0.0
+            self._chunk_attention_scores[chunk_key] = chunk_avg_score
+        else:
+            # Fallback: use FIFO order as score (older chunks = lower score)
+            self._chunk_attention_scores[chunk_key] = 1.0 / (self._eviction_counter + 1)
+
         if self._bandwidth_limiter is not None:
             stored = self._dram.retrieve(chunk_key)
             if stored is not None:
@@ -650,7 +834,8 @@ class HeteroKVManager:
             self._eviction_counter += 1
             print(
                 f"  [Evict->DRAM] layer=0 chunk={chunk_key} "
-                f"tokens={tokens} DRAM_entries={self._dram.num_entries}"
+                f"tokens={tokens} score={self._chunk_attention_scores[chunk_key]:.4f} "
+                f"DRAM_entries={self._dram.num_entries}"
             )
 
 

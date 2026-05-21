@@ -409,8 +409,17 @@ def build_fused_cache(
     enable_triton: bool = True,
     bandwidth_limiter=None,
     self_healing: bool = True,
+    adaptive_self_healing: bool = False,
 ) -> FusedHeteroCache:
-    """Factory: create a fully-configured FusedHeteroCache instance."""
+    """
+    Factory: create a fully-configured FusedHeteroCache instance.
+
+    Args:
+        adaptive_self_healing: If True, use TRUE dynamic window self-healing
+            (retrieves only top-w_t chunks based on attention scores).
+            If False, use full retrieval (100% recall, O(N) memory spike).
+            Default: False (matches paper's NIAH 100% recall claim).
+    """
     return FusedHeteroCache(
         num_layers=num_layers,
         sink_tokens=sink_tokens,
@@ -423,4 +432,5 @@ def build_fused_cache(
         enable_triton=enable_triton,
         bandwidth_limiter=bandwidth_limiter,
         self_healing=self_healing,
+        adaptive_self_healing=adaptive_self_healing,
     )
