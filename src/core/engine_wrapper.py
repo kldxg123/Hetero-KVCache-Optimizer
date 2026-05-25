@@ -84,6 +84,14 @@ class FusedHeteroCache(DynamicCache):
         self._dram_quant_kv: Optional[Dict[str, torch.Tensor]] = None
         self._dram_quant_layer: int = -1
 
+        # ──────────────────────────────────────────────────────────────
+        # Oracle 集成：存储待处理的注意力权重
+        # 用途：在每个 decode step 后捕获注意力权重，传递给 manager.update_attention_scores()
+        # 机制：fused_attention_patch 在计算 attention 时将权重存储在这里
+        #       cache.update() 在最后一层检测到权重时，更新 oracle
+        # ──────────────────────────────────────────────────────────────
+        self._pending_attention_weights: Optional[torch.Tensor] = None
+
         print(
             f"[FusedHeteroCache] Initialized | "
             f"sink={sink_tokens} tail={keep_tail} chunk={chunk_size} "
@@ -139,6 +147,28 @@ class FusedHeteroCache(DynamicCache):
             mode=mode,
             seq_offset=self.real_seq_len,
         )
+
+        # ──────────────────────────────────────────────────────────────
+        # Oracle 集成：在最后一层更新 HeavyHitterOracle
+        #
+        # 关键修复：之前 oracle.update() 从未被调用，导致 token_scores 始终为 None
+        # 现在在每个 decode step 的最后一层，将捕获的注意力权重传递给 oracle
+        #
+        # 数据流：
+        #   1. fused_attention_patch 在计算 attention 时捕获 attn_weights
+        #   2. 存储到 cache._pending_attention_weights
+        #   3. 在这里（最后一层）传递给 manager.update_attention_scores()
+        #   4. manager 调用 oracle.update() 更新累积注意力分数
+        #   5. 下一次驱逐决策时使用这些分数（不再是 FIFO）
+        # ──────────────────────────────────────────────────────────────
+        is_last_layer = (self._num_layers is not None and layer_idx == self._num_layers - 1)
+        if mode == "decode" and is_last_layer:
+            if hasattr(self, '_pending_attention_weights') and \
+               self._pending_attention_weights is not None:
+                # 将注意力权重传递给 manager，更新 oracle
+                manager.update_attention_scores(self._pending_attention_weights)
+                # 清理，为下一个 token 准备（避免内存泄漏）
+                self._pending_attention_weights = None
 
         # Self-healing: swap in DRAM tokens during decode
         if mode == "decode" and self.self_healing and self._swap_in_tokens > 0:
@@ -215,8 +245,7 @@ class FusedHeteroCache(DynamicCache):
     ) -> Tuple[int, int]:
         """
         Return (kv_length, kv_offset) for correct mask dimensions.
-        For prefill chunks: return (chunk_size, 0).
-        For decode: return (hbm_pool + dram_swap + 1, 0) to match extended KV.
+        Returns the actual physical KV length so mask matches what update() returns.
         """
         if self._manager is None:
             return cache_position.shape[0], 0
@@ -225,9 +254,19 @@ class FusedHeteroCache(DynamicCache):
             return cache_position.shape[0], 0
         physical_size = k_cache[layer_idx].shape[-2]
         query_len = cache_position.shape[0]
-        if query_len > 1:  # Prefill chunk: mask width = chunk_size
-            return query_len, 0
-        else:  # Decode: mask width = HBM + DRAM swap-in + new token
+        if query_len > 1:  # Prefill
+            # For chunked prefill: return physical_size + query_len
+            # (previous cache + current chunk) to match returned K/V size
+            return physical_size + query_len, 0
+        else:  # Decode: check if Tail is at capacity (sliding window) or still growing
+            tail_k = self._manager._tail_k[layer_idx]
+            if tail_k is not None:
+                tail_budget = self._manager.hbm_budget_tokens - self._manager.sink_tokens
+                tail_len = tail_k.shape[-2]
+                if tail_len >= tail_budget:
+                    # Tail full: cache won't grow, sliding window mode
+                    return physical_size + self._swap_in_tokens, 0
+            # Tail has room: cache will grow by 1
             return physical_size + self._swap_in_tokens + 1, 0
 
     def _refresh_swap_count(self) -> None:

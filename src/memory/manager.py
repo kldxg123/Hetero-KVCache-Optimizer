@@ -20,6 +20,7 @@ if project_root not in sys.path:
 
 from src.quantization.kv_compressor import KVCompressor
 from src.memory.dram_storage import DRAMStorageManager
+from src.memory.attention_competition_queue import AttentionCompetitionQueue
 from src.policy.prefetcher import AsyncPrefetcher
 from src.policy.heavy_hitter import HeavyHitterOracle
 from src.policy.adaptive_prefetch_controller import AdaptivePrefetchController
@@ -67,22 +68,42 @@ class HeteroKVManager:
 
         max_hbm = sink_tokens + hbm_budget_tokens
 
-        # HBM-resident physical pools: one slot per layer
+        # ════════════════════════════════════════════════════════════════
+        # 三区域 HBM 分区 (用户设计：Sink + Tail + HeavyHitter)
+        # ════════════════════════════════════════════════════════════════
+        # Zone 1: Sink - 固定大小，系统提示 tokens
+        self._sink_k: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._sink_v: List[Optional[torch.Tensor]] = [None] * num_layers
+
+        # Zone 2: Tail - 固定大小，最近上下文 (滑动窗口)
+        self._tail_k: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._tail_v: List[Optional[torch.Tensor]] = [None] * num_layers
+
+        # Zone 3: HeavyHitter - 动态大小，高注意力 tokens
+        self._heavyhitter_k: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._heavyhitter_v: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._heavyhitter_scores: List[Optional[torch.Tensor]] = [None] * num_layers
+        self._heavyhitter_budget = max(hbm_budget_tokens // 2, 2048)
+
+        # Legacy compat: _key_cache = Sink + Tail + HeavyHitter (concatenated view)
         self._key_cache: List[Optional[torch.Tensor]] = [None] * num_layers
         self._value_cache: List[Optional[torch.Tensor]] = [None] * num_layers
-        self._seq_offsets: List[int] = [0] * num_layers  # logical start offset for each layer
+        self._seq_offsets: List[int] = [0] * num_layers
+
+        # 注意力竞争队列 (Tail驱逐 + 动态取回竞争 HeavyHitter HBM)
+        self._competition_queue = AttentionCompetitionQueue()
 
         # Compression engine
         self._compressor = KVCompressor(group_size=group_size, bits=bits)
 
-        # Heavy Hitter Oracle for attention-driven eviction (Phase D/E)
+        # Heavy Hitter Oracle for attention-driven eviction
         self._oracle = HeavyHitterOracle(
             block_size=16,
             sink_tokens=sink_tokens,
             local_window=hbm_budget_tokens,
         )
 
-        # Adaptive prefetch controller (Phase F)
+        # Adaptive prefetch controller
         self._adaptive_controller = AdaptivePrefetchController()
 
         # Async prefetcher for DRAM -> HBM overlap
@@ -90,16 +111,23 @@ class HeteroKVManager:
         if enable_prefetch and torch.cuda.is_available():
             self._prefetcher = AsyncPrefetcher(device=torch.device(device))
 
-        # Predictive prefetch scheduler (initialized lazily when DRAM entries exist)
+        # Predictive prefetch scheduler
         self._predictive_scheduler: Optional[PredictivePrefetchScheduler] = None
 
-        # DRAM tier-2 storage: managed by DRAMStorageManager (pinned CPU memory)
+        # DRAM tier-2 storage
         self._dram = DRAMStorageManager()
         self._eviction_counter = 0
 
         # Adaptive self-healing: track chunk metadata for dynamic window retrieval
         self._chunk_eviction_order: List[str] = []  # Track eviction order
         self._chunk_attention_scores: Dict[str, float] = {}  # chunk_key -> avg score
+
+        # ──────────────────────────────────────────────────────────────
+        # Oracle 集成：存储最近的注意力权重
+        # 用途：供 AdaptivePrefetchController 计算动态窗口 w_t
+        # 时序：update_attention_scores() 存入 → get_dram_chunks_quantized_adaptive() 消费
+        # ──────────────────────────────────────────────────────────────
+        self._last_attention_weights: Optional[torch.Tensor] = None
 
     @property
     def _dram_table(self) -> Dict[str, Dict[str, torch.Tensor]]:
@@ -277,8 +305,13 @@ class HeteroKVManager:
         """
         Phase D: Feed attention weights from the latest decode step to the
         HeavyHitterOracle for cumulative importance tracking.
+
+        Also stores the weights for AdaptivePrefetchController to compute
+        dynamic window w_t based on attention volatility σ(A_t).
         """
         self._oracle.update(attention_weights)
+        # Store for adaptive controller (copy to avoid detachment issues)
+        self._last_attention_weights = attention_weights.detach().clone()
 
     def get_oracle_scores(self) -> Optional[torch.Tensor]:
         """Return current cumulative attention scores (for debugging/testing)."""
@@ -353,7 +386,13 @@ class HeteroKVManager:
         }
 
     def max_hbm_tokens(self) -> int:
-        return self.sink_tokens + self.hbm_budget_tokens
+        """
+        返回HBM中能存储的最大token数（三区域架构）
+
+        总HBM预算 = Sink + Tail + HeavyHitter
+        = sink_tokens + hbm_budget_tokens + heavyhitter_budget
+        """
+        return self.sink_tokens + self.hbm_budget_tokens + self._heavyhitter_budget
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -367,83 +406,169 @@ class HeteroKVManager:
         seq_offset: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Transient interception architecture:
-          1. Internally retain only Sink + Tail in the HBM physical pool.
-          2. Evict overflow tail to DRAM via 4-bit quantization.
-          3. Return the FULL original tensors to preserve FlashAttention compatibility.
+        三区域架构 prefill 更新逻辑（分段预填充）
+
+        流程：
+        1. 提取Sink（开头64个tokens）→ Sink HBM分区
+        2. 提取Tail（结尾2048个tokens）→ Tail HBM分区
+        3. 中间tokens → 压缩到DRAM
+        4. 初始化HeavyHitter分区（prefill阶段为空，后续通过竞争队列填充）
+        5. 返回 Sink + Tail + HeavyHitter（初始为空）
+
+        注意：Prefill阶段没有注意力分数，HeavyHitter分区在decode阶段动态填充
         """
         new_len = key_states.shape[-2]
-        max_hbm = self.max_hbm_tokens()
 
-        # Robustness: auto-expand internal lists if num_layers was under-estimated
-        while len(self._key_cache) <= layer_idx:
+        # 初始化三个分区（如果需要）
+        while len(self._sink_k) <= layer_idx:
+            self._sink_k.append(None)
+            self._sink_v.append(None)
+            self._tail_k.append(None)
+            self._tail_v.append(None)
+            self._heavyhitter_k.append(None)
+            self._heavyhitter_v.append(None)
+            self._heavyhitter_scores.append(None)
             self._key_cache.append(None)
             self._value_cache.append(None)
             self._seq_offsets.append(0)
 
-        if self._key_cache[layer_idx] is None:
-            # First write: crop to sink + tail, evict body to DRAM
-            sink_amt = min(new_len, self.sink_tokens)
-            tail_amt = min(new_len - sink_amt, self.hbm_budget_tokens)
+        # ════════════════════════════════════════════════════════════════
+        # 增量预填充：如果Sink已有数据，说明这是后续chunk
+        # 保留Sink，将新chunk追加到Tail，超量部分驱逐到DRAM
+        # ════════════════════════════════════════════════════════════════
+        if self._sink_k[layer_idx] is not None:
+            return self._incremental_prefill_update(
+                layer_idx, key_states, value_states, seq_offset
+            )
 
-            k_sink = key_states[..., :sink_amt, :]
-            v_sink = value_states[..., :sink_amt, :]
+        # ════════════════════════════════════════════════════════════════
+        # Step 1: 提取Sink（开头固定tokens）
+        # ════════════════════════════════════════════════════════════════
+        sink_amt = min(new_len, self.sink_tokens)
 
-            if tail_amt > 0:
-                k_tail = key_states[..., -tail_amt:, :]
-                v_tail = value_states[..., -tail_amt:, :]
-                self._key_cache[layer_idx] = torch.cat([k_sink, k_tail], dim=-2)
-                self._value_cache[layer_idx] = torch.cat([v_sink, v_tail], dim=-2)
-            else:
-                self._key_cache[layer_idx] = k_sink
-                self._value_cache[layer_idx] = v_sink
-
-            # Evict body (middle tokens between sink and tail) to DRAM
-            if self.enable_quant and new_len > max_hbm:
-                body_start = sink_amt
-                body_end = new_len - tail_amt
-                if body_end > body_start:
-                    self._evict_to_dram(
-                        layer_idx,
-                        key_states[..., body_start:body_end, :],
-                        value_states[..., body_start:body_end, :],
-                    )
+        if sink_amt > 0:
+            self._sink_k[layer_idx] = key_states[..., :sink_amt, :].clone()
+            self._sink_v[layer_idx] = value_states[..., :sink_amt, :].clone()
         else:
-            # Append and maintain rolling window
-            new_k = torch.cat([self._key_cache[layer_idx], key_states], dim=-2)
-            new_v = torch.cat([self._value_cache[layer_idx], value_states], dim=-2)
-            cur_len = new_k.shape[-2]
+            self._sink_k[layer_idx] = torch.empty(
+                key_states.shape[0], key_states.shape[1], 0, key_states.shape[3],
+                device=key_states.device, dtype=key_states.dtype
+            )
+            self._sink_v[layer_idx] = torch.empty(
+                value_states.shape[0], value_states.shape[1], 0, value_states.shape[3],
+                device=value_states.device, dtype=value_states.dtype
+            )
 
-            if cur_len > max_hbm:
-                overflow = cur_len - max_hbm
-                evict_start = self.sink_tokens
-                evict_end = evict_start + overflow
+        # ════════════════════════════════════════════════════════════════
+        # Step 2: 提取Tail（结尾固定tokens，滑动窗口）
+        # ════════════════════════════════════════════════════════════════
+        tail_budget = self.hbm_budget_tokens - self.sink_tokens
+        tail_amt = min(new_len - sink_amt, tail_budget)
 
-                if self.enable_quant:
-                    self._evict_to_dram(
-                        layer_idx,
-                        new_k[..., evict_start:evict_end, :],
-                        new_v[..., evict_start:evict_end, :],
-                    )
+        if tail_amt > 0:
+            self._tail_k[layer_idx] = key_states[..., -tail_amt:, :].clone()
+            self._tail_v[layer_idx] = value_states[..., -tail_amt:, :].clone()
+        else:
+            self._tail_k[layer_idx] = torch.empty(
+                key_states.shape[0], key_states.shape[1], 0, key_states.shape[3],
+                device=key_states.device, dtype=key_states.dtype
+            )
+            self._tail_v[layer_idx] = torch.empty(
+                value_states.shape[0], value_states.shape[1], 0, value_states.shape[3],
+                device=value_states.device, dtype=value_states.dtype
+            )
 
-                self._key_cache[layer_idx] = torch.cat(
-                    [new_k[..., : self.sink_tokens, :], new_k[..., evict_end:, :]],
-                    dim=-2,
-                )
-                self._value_cache[layer_idx] = torch.cat(
-                    [new_v[..., : self.sink_tokens, :], new_v[..., evict_end:, :]],
-                    dim=-2,
-                )
-            else:
-                self._key_cache[layer_idx] = new_k
-                self._value_cache[layer_idx] = new_v
+        # ════════════════════════════════════════════════════════════════
+        # Step 3: 中间tokens → 压缩到DRAM
+        # ════════════════════════════════════════════════════════════════
+        body_start = sink_amt
+        body_end = new_len - tail_amt
 
-            del new_k, new_v
+        if self.enable_quant and body_end > body_start:
+            # 提取中间tokens
+            body_k = key_states[..., body_start:body_end, :]
+            body_v = value_states[..., body_start:body_end, :]
 
+            # 压缩并存储到DRAM
+            self._evict_to_dram(layer_idx, body_k, body_v)
+
+        # ════════════════════════════════════════════════════════════════
+        # Step 4: 初始化HeavyHitter分区（初始为空）
+        # ════════════════════════════════════════════════════════════════
+        # Prefill阶段没有注意力分数，HeavyHitter初始为空
+        # 在decode阶段通过竞争队列动态填充
+        self._heavyhitter_k[layer_idx] = torch.empty(
+            key_states.shape[0], key_states.shape[1], 0, key_states.shape[3],
+            device=key_states.device, dtype=key_states.dtype
+        )
+        self._heavyhitter_v[layer_idx] = torch.empty(
+            value_states.shape[0], value_states.shape[1], 0, value_states.shape[3],
+            device=value_states.device, dtype=value_states.dtype
+        )
+        self._heavyhitter_scores[layer_idx] = torch.empty(
+            0, device=key_states.device, dtype=torch.float32
+        )
+
+        # ════════════════════════════════════════════════════════════════
+        # Step 5: 更新legacy cache
+        # ════════════════════════════════════════════════════════════════
+        self._update_legacy_cache(layer_idx)
         self._seq_offsets[layer_idx] = seq_offset + new_len
 
-        # Return full tensors to keep FlashAttention kernels happy
+        # Prefill: return FULL original K/V so self-attention computes correctly.
+        # Truncation to Sink+Tail+HH takes effect during decode.
         return key_states, value_states
+
+    def _incremental_prefill_update(
+        self,
+        layer_idx: int,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        seq_offset: int = 0,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        增量预填充：处理后续chunk。
+
+        保留Sink（首个chunk的开头tokens），将新chunk追加到Tail。
+        如果Tail超过预算，驱逐旧Tail开头tokens到DRAM。
+        返回 Sink + old_tail + new_chunk 以保证注意力计算正确。
+        """
+        new_len = key_states.shape[-2]
+        tail_budget = self.hbm_budget_tokens - self.sink_tokens
+
+        old_tail_k = self._tail_k[layer_idx]
+        old_tail_v = self._tail_v[layer_idx]
+
+        # Combine old Tail + current chunk
+        combined_k = torch.cat([old_tail_k, key_states], dim=-2)
+        combined_v = torch.cat([old_tail_v, value_states], dim=-2)
+
+        # Return Sink + combined (for correct inter-chunk attention)
+        return_k = torch.cat([self._sink_k[layer_idx], combined_k], dim=-2)
+        return_v = torch.cat([self._sink_v[layer_idx], combined_v], dim=-2)
+
+        # Evict excess from the beginning of combined Tail → DRAM
+        combined_len = combined_k.shape[-2]
+        if combined_len > tail_budget:
+            evict_count = combined_len - tail_budget
+            evicted_k = combined_k[:, :, :evict_count, :]
+            evicted_v = combined_v[:, :, :evict_count, :]
+
+            if self.enable_quant and evict_count > 0:
+                self._evict_to_dram(layer_idx, evicted_k, evicted_v)
+
+            # Keep last tail_budget tokens
+            self._tail_k[layer_idx] = combined_k[:, :, evict_count:, :].clone()
+            self._tail_v[layer_idx] = combined_v[:, :, evict_count:, :].clone()
+        else:
+            self._tail_k[layer_idx] = combined_k
+            self._tail_v[layer_idx] = combined_v
+
+        # Update legacy cache and return
+        self._update_legacy_cache(layer_idx)
+        self._seq_offsets[layer_idx] = seq_offset + new_len
+
+        return return_k, return_v
 
     def _decode_update(
         self,
@@ -453,110 +578,188 @@ class HeteroKVManager:
         seq_offset: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Decode residency: append new token to the physical pool and maintain
-        the rolling window. When HBM is full, consult HeavyHitterOracle for
-        attention-driven eviction instead of simple FIFO.
-        """
-        max_hbm = self.max_hbm_tokens()
+        三区域架构 decode 更新逻辑
 
-        # Robustness: auto-expand internal lists if num_layers was under-estimated
-        while len(self._key_cache) <= layer_idx:
+        流程：
+        1. 新token → Tail
+        2. 如果Tail满 → 驱逐Tail开头tokens → 加入竞争队列
+        3. 处理竞争队列 → top-K → HeavyHitter HBM分区
+        4. 如果HeavyHitter满 → 驱逐低分数tokens → DRAM
+        5. 返回 Sink + Tail + HeavyHitter
+        """
+        # 初始化三个分区（如果需要）
+        while len(self._sink_k) <= layer_idx:
+            self._sink_k.append(None)
+            self._sink_v.append(None)
+            self._tail_k.append(None)
+            self._tail_v.append(None)
+            self._heavyhitter_k.append(None)
+            self._heavyhitter_v.append(None)
+            self._heavyhitter_scores.append(None)
             self._key_cache.append(None)
             self._value_cache.append(None)
             self._seq_offsets.append(0)
 
-        k_cache = self._key_cache[layer_idx]
-        v_cache = self._value_cache[layer_idx]
+        # Step 1: 新token添加到Tail
+        tail_budget = self.hbm_budget_tokens - self.sink_tokens
 
-        if k_cache is None:
-            self._key_cache[layer_idx] = key_states
-            self._value_cache[layer_idx] = value_states
-            self._seq_offsets[layer_idx] = seq_offset + 1
-            return key_states, value_states
-
-        cur_len = k_cache.shape[-2]
-        if cur_len < max_hbm:
-            new_k = torch.cat([k_cache, key_states], dim=-2)
-            new_v = torch.cat([v_cache, value_states], dim=-2)
+        if self._tail_k[layer_idx] is None:
+            # 第一次写入：初始化Tail
+            self._tail_k[layer_idx] = key_states.clone()
+            self._tail_v[layer_idx] = value_states.clone()
         else:
-            # Oracle-driven eviction: find least important tokens to evict
-            new_k = torch.cat([k_cache, key_states], dim=-2)
-            new_v = torch.cat([v_cache, value_states], dim=-2)
+            tail_len = self._tail_k[layer_idx].shape[-2]
 
-            tokens_to_evict = 1  # One token per decode step
-
-            if self._oracle.token_scores is not None and self.enable_quant:
-                # Phase D+E: Use Triton-accelerated oracle for eviction decision
-                current_seq_len = new_k.shape[-2]
-                evict_candidates = self._oracle.get_eviction_candidates(
-                    current_seq_len=current_seq_len,
-                    evict_num_blocks=max(1, tokens_to_evict // self._oracle.block_size),
-                )
-
-                if evict_candidates.numel() > 0:
-                    # Convert block indices to token ranges and build eviction mask
-                    evict_mask = torch.zeros(current_seq_len, dtype=torch.bool, device=new_k.device)
-                    for block_idx in evict_candidates:
-                        start_tok = block_idx.item() * self._oracle.block_size
-                        end_tok = min(start_tok + self._oracle.block_size, current_seq_len)
-                        # Protect sink zone
-                        if start_tok < self.sink_tokens:
-                            continue
-                        evict_mask[start_tok:end_tok] = True
-
-                    if evict_mask.any():
-                        keep_mask = ~evict_mask
-                        evicted_k = new_k[..., evict_mask, :]
-                        evicted_v = new_v[..., evict_mask, :]
-                        self._evict_to_dram(layer_idx, evicted_k, evicted_v)
-
-                        new_k = new_k[..., keep_mask, :]
-                        new_v = new_v[..., keep_mask, :]
-                    else:
-                        # Fallback: simple rolling window
-                        new_k = torch.cat(
-                            [k_cache[..., :self.sink_tokens, :],
-                             k_cache[..., self.sink_tokens + 1:, :],
-                             key_states], dim=-2)
-                        new_v = torch.cat(
-                            [v_cache[..., :self.sink_tokens, :],
-                             v_cache[..., self.sink_tokens + 1:, :],
-                             value_states], dim=-2)
-                        evicted_k = k_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
-                        evicted_v = v_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
-                        self._evict_to_dram(layer_idx, evicted_k, evicted_v)
-                else:
-                    # No candidates from oracle (all protected), fallback to FIFO
-                    new_k = torch.cat(
-                        [k_cache[..., :self.sink_tokens, :],
-                         k_cache[..., self.sink_tokens + 1:, :],
-                         key_states], dim=-2)
-                    new_v = torch.cat(
-                        [v_cache[..., :self.sink_tokens, :],
-                         v_cache[..., self.sink_tokens + 1:, :],
-                         value_states], dim=-2)
-                    evicted_k = k_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
-                    evicted_v = v_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
-                    self._evict_to_dram(layer_idx, evicted_k, evicted_v)
+            if tail_len < tail_budget:
+                # Tail未满：直接添加
+                self._tail_k[layer_idx] = torch.cat([self._tail_k[layer_idx], key_states], dim=-2)
+                self._tail_v[layer_idx] = torch.cat([self._tail_v[layer_idx], value_states], dim=-2)
             else:
-                # No attention scores yet: FIFO eviction of oldest tail token
-                new_k = torch.cat(
-                    [k_cache[..., :self.sink_tokens, :],
-                     k_cache[..., self.sink_tokens + 1:, :],
-                     key_states], dim=-2)
-                new_v = torch.cat(
-                    [v_cache[..., :self.sink_tokens, :],
-                     v_cache[..., self.sink_tokens + 1:, :],
-                     value_states], dim=-2)
-                evicted_k = k_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
-                evicted_v = v_cache[..., self.sink_tokens:self.sink_tokens + 1, :]
-                self._evict_to_dram(layer_idx, evicted_k, evicted_v)
+                # ═══════════════════════════════════════════════════════════
+                # Tail满：驱逐Tail开头tokens → 竞争队列
+                # ═══════════════════════════════════════════════════════════
+                evicted_k = self._tail_k[layer_idx][:, :, :1, :]
+                evicted_v = self._tail_v[layer_idx][:, :, :1, :]
 
-        self._key_cache[layer_idx] = new_k
-        self._value_cache[layer_idx] = new_v
+                # 获取驱逐tokens的注意力分数
+                if self._oracle.token_scores is not None:
+                    current_len = self._get_current_seq_length()
+                    evicted_score = self._oracle.token_scores[current_len - 1:current_len]
+                else:
+                    evicted_score = torch.tensor([1.0], device=self.device)
+
+                # 压缩并加入竞争队列
+                if self.enable_quant:
+                    k_data, k_scales, k_zps = self._compressor.compress(evicted_k)
+                    v_data, v_scales, v_zps = self._compressor.compress(evicted_v)
+                    self._competition_queue.enqueue(
+                        k=evicted_k, v=evicted_v, scores=evicted_score,
+                        compressed={'k_data': k_data, 'k_scales': k_scales, 'k_zps': k_zps,
+                                'v_data': v_data, 'v_scales': v_scales, 'v_zps': v_zps},
+                        layer_idx=layer_idx, prefix=f"tail_evict"
+                    )
+                else:
+                    self._competition_queue.enqueue(
+                        k=evicted_k, v=evicted_v, scores=evicted_score,
+                        compressed=None, layer_idx=layer_idx, prefix=f"tail_evict"
+                    )
+
+                # 滑动Tail窗口：移除开头，添加新token到末尾
+                self._tail_k[layer_idx] = torch.cat([self._tail_k[layer_idx][:, :, 1:, :], key_states], dim=-2)
+                self._tail_v[layer_idx] = torch.cat([self._tail_v[layer_idx][:, :, 1:, :], value_states], dim=-2)
+
+        # Step 2: 处理竞争队列
+        self._process_competition_queue(layer_idx)
+
+        # Step 3: 更新legacy _key_cache (Sink + Tail + HeavyHitter)
+        self._update_legacy_cache(layer_idx)
         self._seq_offsets[layer_idx] = seq_offset + 1
 
+        # 返回用于attention的KV (Sink + Tail + HeavyHitter)
         return self._key_cache[layer_idx], self._value_cache[layer_idx]
+
+    def _get_current_seq_length(self) -> int:
+        """获取当前序列长度（用于oracle分数索引）"""
+        total = 0
+        for layer in range(self.num_layers):
+            if self._sink_k[layer] is not None:
+                total += self._sink_k[layer].shape[-2]
+            if self._tail_k[layer] is not None:
+                total += self._tail_k[layer].shape[-2]
+        return total
+
+    def _process_competition_queue(self, layer_idx: int):
+        """
+        处理注意力竞争队列
+
+        逻辑：
+        1. 从队列取top-K tokens
+        2. 尝试加入HeavyHitter HBM分区
+        3. 如果超过预算，驱逐低分数tokens
+        """
+        # 计算HeavyHitter当前占用
+        current_hh_len = 0
+        if self._heavyhitter_k[layer_idx] is not None:
+            current_hh_len = self._heavyhitter_k[layer_idx].shape[-2]
+
+        available_budget = self._heavyhitter_budget - current_hh_len
+
+        if available_budget > 0:
+            # 从竞争队列取top-K tokens
+            top_k, top_v, top_scores = self._competition_queue.dequeue_top_k(available_budget)
+
+            if top_k is not None:
+                # 加入HeavyHitter分区
+                if self._heavyhitter_k[layer_idx] is None:
+                    self._heavyhitter_k[layer_idx] = top_k
+                    self._heavyhitter_v[layer_idx] = top_v
+                    self._heavyhitter_scores[layer_idx] = top_scores
+                else:
+                    self._heavyhitter_k[layer_idx] = torch.cat([self._heavyhitter_k[layer_idx], top_k], dim=-2)
+                    self._heavyhitter_v[layer_idx] = torch.cat([self._heavyhitter_v[layer_idx], top_v], dim=-2)
+                    self._heavyhitter_scores[layer_idx] = torch.cat([self._heavyhitter_scores[layer_idx], top_scores], dim=-1)
+
+        # 如果HeavyHitter仍超过预算，驱逐低分数tokens到DRAM
+        if self._heavyhitter_k[layer_idx] is not None:
+            hh_len = self._heavyhitter_k[layer_idx].shape[-2]
+
+            if hh_len > self._heavyhitter_budget:
+                # 驱除多余的tokens
+                num_evict = hh_len - self._heavyhitter_budget
+
+                # 根据分数排序，驱逐最低分的tokens
+                if self._heavyhitter_scores[layer_idx] is not None:
+                    _, low_score_indices = torch.topk(
+                        self._heavyhitter_scores[layer_idx],
+                        k=num_evict,
+                        largest=False
+                    )
+                else:
+                    low_score_indices = torch.arange(num_evict, device=self.device)
+
+                evicted_k = self._heavyhitter_k[layer_idx][:, low_score_indices, :]
+                evicted_v = self._heavyhitter_v[layer_idx][:, low_score_indices, :]
+
+                # 压缩并驱逐到DRAM
+                if self.enable_quant:
+                    k_data, k_scales, k_zps = self._compressor.compress(evicted_k)
+                    v_data, v_scales, v_zps = self._compressor.compress(evicted_v)
+                    self._dram.store(f"hh_evict_{layer_idx}_{torch.tensor([0])}", k_data, k_scales, k_zps, v_data, v_scales, v_zps)
+
+                # 保留剩余的高分数tokens
+                keep_mask = torch.ones(hh_len, dtype=torch.bool, device=self.device)
+                keep_mask[low_score_indices] = False
+
+                self._heavyhitter_k[layer_idx] = self._heavyhitter_k[layer_idx][:, keep_mask, :]
+                self._heavyhitter_v[layer_idx] = self._heavyhitter_v[layer_idx][:, keep_mask, :]
+                self._heavyhitter_scores[layer_idx] = self._heavyhitter_scores[layer_idx][keep_mask]
+
+    def _update_legacy_cache(self, layer_idx: int):
+        """更新legacy _key_cache 以保持兼容性"""
+        # 用sink的shape作为参考，构造正确维度的空张量
+        ref = self._sink_k[layer_idx]
+        if ref is not None:
+            s = ref.shape
+            empty_k = torch.empty(s[0], s[1], 0, s[3], device=self.device, dtype=ref.dtype)
+            empty_v = torch.empty(s[0], s[1], 0, s[3], device=self.device, dtype=ref.dtype)
+        elif self._tail_k[layer_idx] is not None:
+            s = self._tail_k[layer_idx].shape
+            empty_k = torch.empty(s[0], s[1], 0, s[3], device=self.device, dtype=self._tail_k[layer_idx].dtype)
+            empty_v = torch.empty(s[0], s[1], 0, s[3], device=self.device, dtype=self._tail_k[layer_idx].dtype)
+        else:
+            return
+
+        sink_k = self._sink_k[layer_idx] if self._sink_k[layer_idx] is not None else empty_k
+        tail_k = self._tail_k[layer_idx] if self._tail_k[layer_idx] is not None else empty_k
+        hh_k = self._heavyhitter_k[layer_idx] if self._heavyhitter_k[layer_idx] is not None else empty_k
+
+        self._key_cache[layer_idx] = torch.cat([sink_k, tail_k, hh_k], dim=-2)
+
+        sink_v = self._sink_v[layer_idx] if self._sink_v[layer_idx] is not None else empty_v
+        tail_v = self._tail_v[layer_idx] if self._tail_v[layer_idx] is not None else empty_v
+        hh_v = self._heavyhitter_v[layer_idx] if self._heavyhitter_v[layer_idx] is not None else empty_v
+
+        self._value_cache[layer_idx] = torch.cat([sink_v, tail_v, hh_v], dim=-2)
 
     def decompress_dram_chunks(
         self, layer_idx: int
@@ -638,7 +841,7 @@ class HeteroKVManager:
         # Compute adaptive window size using AdaptivePrefetchController
         if window_size is None:
             # Reuse the same controller for self-healing window sizing
-            w_t = int(self._adaptive_controller.compute_window(attention_weights=None, cache_miss=False))
+            w_t = int(self._adaptive_controller.compute_window(attention_weights=self._last_attention_weights, cache_miss=False))
             window_size = max(1, min(w_t, len(dram_keys)))
 
         # Rank chunks by attention score (heavy hitters first)
@@ -746,7 +949,7 @@ class HeteroKVManager:
 
         # Compute adaptive window size
         if window_size is None:
-            w_t = int(self._adaptive_controller.compute_window(attention_weights=None, cache_miss=False))
+            w_t = int(self._adaptive_controller.compute_window(attention_weights=self._last_attention_weights, cache_miss=False))
             window_size = max(1, min(w_t, len(dram_keys)))
 
         # Rank chunks by attention score (heavy hitters first)
@@ -791,12 +994,24 @@ class HeteroKVManager:
         key_to_idx = {k: i for i, k in enumerate(dram_keys)}
         sorted_indices = [key_to_idx[k] for k in selected_keys_sorted if k in key_to_idx]
 
+        # Handle concatenation based on tensor dimensions
+        # For data tensors (3D: [batch, heads, seq] or 4D): concatenate along dim=-2 (sequence dim)
         k_data = torch.cat([all_k_data[i] for i in sorted_indices], dim=-2)
-        k_scales = torch.cat([all_k_scales[i] for i in sorted_indices], dim=-2)
-        k_zps = torch.cat([all_k_zps[i] for i in sorted_indices], dim=-2)
         v_data = torch.cat([all_v_data[i] for i in sorted_indices], dim=-2)
-        v_scales = torch.cat([all_v_scales[i] for i in sorted_indices], dim=-2)
-        v_zps = torch.cat([all_v_zps[i] for i in sorted_indices], dim=-2)
+
+        # For scales/zp tensors: determine dimension based on shape
+        if all_k_scales[0].ndim >= 2:
+            # 2D+ tensors: concatenate along sequence dimension (dim=-2)
+            k_scales = torch.cat([all_k_scales[i] for i in sorted_indices], dim=-2)
+            k_zps = torch.cat([all_k_zps[i] for i in sorted_indices], dim=-2)
+            v_scales = torch.cat([all_v_scales[i] for i in sorted_indices], dim=-2)
+            v_zps = torch.cat([all_v_zps[i] for i in sorted_indices], dim=-2)
+        else:
+            # 1D tensors: concatenate along dim=0 (the only dimension)
+            k_scales = torch.cat([all_k_scales[i] for i in sorted_indices], dim=0)
+            k_zps = torch.cat([all_k_zps[i] for i in sorted_indices], dim=0)
+            v_scales = torch.cat([all_v_scales[i] for i in sorted_indices], dim=0)
+            v_zps = torch.cat([all_v_zps[i] for i in sorted_indices], dim=0)
 
         # Calculate memory savings
         tokens_4bit = k_data.shape[-2]
