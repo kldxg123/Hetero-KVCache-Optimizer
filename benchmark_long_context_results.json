@@ -1,0 +1,137 @@
+{
+  "metadata": {
+    "timestamp": "2026-05-25 06:42:14",
+    "model": "llava-hf/llava-1.5-7b-hf",
+    "dataset": "flaviagiammarino/vqa-rad",
+    "final_question": "is there evidence of an aortic aneurysm?",
+    "expected_answer": "yes"
+  },
+  "tests": [
+    {
+      "context_pairs": 2,
+      "hetero_on": {
+        "use_hetero": true,
+        "memory_peak_mb": 13813.634765625,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.6553447246551514,
+        "input_tokens": 659,
+        "output_tokens": 2
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "memory_peak_mb": 13483.634765625,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.11499571800231934,
+        "input_tokens": 659,
+        "output_tokens": 2
+      }
+    },
+    {
+      "context_pairs": 5,
+      "hetero_on": {
+        "use_hetero": true,
+        "memory_peak_mb": 13845.13623046875,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.11910080909729004,
+        "input_tokens": 722,
+        "output_tokens": 2
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "memory_peak_mb": 13483.63623046875,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.1174616813659668,
+        "input_tokens": 722,
+        "output_tokens": 2
+      }
+    },
+    {
+      "context_pairs": 10,
+      "hetero_on": {
+        "use_hetero": true,
+        "memory_peak_mb": 13904.16943359375,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.1336197853088379,
+        "input_tokens": 831,
+        "output_tokens": 2
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "memory_peak_mb": 13483.63818359375,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.13260579109191895,
+        "input_tokens": 831,
+        "output_tokens": 2
+      }
+    },
+    {
+      "context_pairs": 15,
+      "hetero_on": {
+        "use_hetero": true,
+        "memory_peak_mb": 13959.640625,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.20851588249206543,
+        "input_tokens": 951,
+        "output_tokens": 2
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "memory_peak_mb": 13483.640625,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.14655017852783203,
+        "input_tokens": 951,
+        "output_tokens": 2
+      }
+    },
+    {
+      "context_pairs": 20,
+      "hetero_on": {
+        "use_hetero": true,
+        "memory_peak_mb": 14016.8447265625,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.16116714477539062,
+        "input_tokens": 1065,
+        "output_tokens": 2
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "memory_peak_mb": 13483.6435546875,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.16188764572143555,
+        "input_tokens": 1065,
+        "output_tokens": 2
+      }
+    },
+    {
+      "context_pairs": 30,
+      "hetero_on": {
+        "use_hetero": true,
+        "memory_peak_mb": 14124.1484375,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.1716175079345703,
+        "input_tokens": 1280,
+        "output_tokens": 2
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "memory_peak_mb": 13483.6484375,
+        "oom_occurred": false,
+        "answer": "Yes",
+        "generation_time": 0.1707925796508789,
+        "input_tokens": 1280,
+        "output_tokens": 2
+      }
+    }
+  ]
+}

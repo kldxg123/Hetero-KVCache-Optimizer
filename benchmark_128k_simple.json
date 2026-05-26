@@ -1,0 +1,154 @@
+{
+  "metadata": {
+    "timestamp": "2026-05-25 07:54:46",
+    "gpu_total_mb": 81151.75,
+    "test_question": "is there evidence of an aortic aneurysm?",
+    "expected_answer": "yes"
+  },
+  "tests": [
+    {
+      "context_pairs": 50,
+      "hetero_on": {
+        "use_hetero": true,
+        "context_length": 2734,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 14373.595703125,
+          "gpu_utilization_pct": 17.711997218944756
+        },
+        "answer": "Yes",
+        "correct": true,
+        "time": 1.020571231842041,
+        "input_tokens": 1484
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "context_length": 2734,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 14374.939453125,
+          "gpu_utilization_pct": 17.713653067401506
+        },
+        "answer": "Yes",
+        "correct": true,
+        "time": 0.16940784454345703,
+        "input_tokens": 1484
+      }
+    },
+    {
+      "context_pairs": 100,
+      "hetero_on": {
+        "use_hetero": true,
+        "context_length": 5408,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 14769.20703125,
+          "gpu_utilization_pct": 18.1994929637993
+        },
+        "answer": "Yes",
+        "correct": true,
+        "time": 0.8502318859100342,
+        "input_tokens": 2375
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "context_length": 5408,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 14901.24267578125,
+          "gpu_utilization_pct": 18.362195116902903
+        },
+        "answer": "Yes",
+        "correct": true,
+        "time": 0.23665738105773926,
+        "input_tokens": 2375
+      }
+    },
+    {
+      "context_pairs": 200,
+      "hetero_on": {
+        "use_hetero": true,
+        "context_length": 11336,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 14958.345703125,
+          "gpu_utilization_pct": 18.432560854356193
+        },
+        "answer": "what is the patient's gender?",
+        "correct": false,
+        "time": 2.240677833557129,
+        "input_tokens": 4265
+      },
+      "hetero_off": {
+        "use_hetero": false,
+        "context_length": 11336,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 16029.68798828125,
+          "gpu_utilization_pct": 19.75273236656172
+        },
+        "answer": "what is the patient's?",
+        "correct": false,
+        "time": 0.5432744026184082,
+        "input_tokens": 4265
+      }
+    },
+    {
+      "context_pairs": 400,
+      "hetero_on": {
+        "use_hetero": true,
+        "context_length": 21854,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 15276.6396484375,
+          "gpu_utilization_pct": 18.824781533900996
+        },
+        "answer": "",
+        "correct": false,
+        "time": 6.1789069175720215,
+        "input_tokens": 7738
+      }
+    },
+    {
+      "context_pairs": 800,
+      "hetero_on": {
+        "use_hetero": true,
+        "context_length": 43577,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 15947.6962890625,
+          "gpu_utilization_pct": 19.651697331311404
+        },
+        "answer": "",
+        "correct": false,
+        "time": 12.15206503868103,
+        "input_tokens": 14808
+      }
+    },
+    {
+      "context_pairs": 1600,
+      "hetero_on": {
+        "use_hetero": true,
+        "context_length": 87939,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "peak_allocated_mb": 17318.474609375,
+          "gpu_utilization_pct": 21.340851687579136
+        },
+        "answer": "",
+        "correct": false,
+        "time": 26.85473942756653,
+        "input_tokens": 29147
+      }
+    }
+  ]
+}

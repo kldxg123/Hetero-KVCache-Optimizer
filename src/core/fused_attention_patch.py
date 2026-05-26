@@ -82,7 +82,31 @@ def patch_model_for_fused_attention(
 
         if not has_dram_kv:
             # No DRAM data or Triton disabled: use standard path
-            return original_sdpa(query, key, value, attn_mask, dropout_p, is_causal, *args, **kwargs)
+            # ──────────────────────────────────────────────────────────
+            # Oracle 集成：手动计算 attention 以同时获取 weights 和 output
+            # 原始 original_sdpa 不返回 weights，所以用手动计算替代
+            # 对于 decode (q_len=1)，性能差异可忽略
+            # ──────────────────────────────────────────────────────────
+            with torch.no_grad():
+                scale = head_dim ** 0.5
+                scores = torch.matmul(query, key.transpose(-2, -1)) / scale
+                if attn_mask is not None:
+                    if attn_mask.dim() == 2:
+                        attn_mask_expanded = attn_mask[:, None, None, :]
+                    elif attn_mask.dim() == 3:
+                        attn_mask_expanded = attn_mask[:, None, :, :]
+                    else:
+                        attn_mask_expanded = attn_mask
+                    scores = scores + attn_mask_expanded
+                computed_attn_weights = F.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
+                result = torch.matmul(computed_attn_weights, value)
+
+            # 捕获注意力权重供 oracle 使用
+            # [batch, heads, 1, seq_len] → [seq_len]（跨 heads 平均）
+            if hasattr(cache, '_pending_attention_weights'):
+                cache._pending_attention_weights = computed_attn_weights[0, :, -1, :].mean(dim=0).detach()
+
+            return result
 
         # ──────────────────────────────────────────────────────────
         # Triton-optimized path: Split KV into HBM (BF16) and DRAM (4-bit)
@@ -134,6 +158,14 @@ def patch_model_for_fused_attention(
 
         attn_weights = F.softmax(all_scores, dim=-1, dtype=torch.float32)
         attn_weights = attn_weights.to(query.dtype)
+
+        # ──────────────────────────────────────────────────────────
+        # Oracle 集成：捕获注意力权重（DRAM 路径）
+        # 这里 attn_weights 已经计算好，无需额外开销
+        # ──────────────────────────────────────────────────────────
+        # [batch, heads, 1, seq_len] → [seq_len]（跨 heads 平均）
+        if hasattr(cache, '_pending_attention_weights'):
+            cache._pending_attention_weights = attn_weights[0, :, -1, :].mean(dim=0).detach()
 
         # ──────────────────────────────────────────────────────────
         # Step 3: Compute weighted V sum (HBM: standard, DRAM: Triton AV)

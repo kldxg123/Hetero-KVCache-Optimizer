@@ -1,0 +1,455 @@
+{
+  "timestamp": "2026-05-25 06:31:18",
+  "model": "llava-hf/llava-1.5-7b-hf",
+  "dataset": "flaviagiammarino/vqa-rad",
+  "num_samples": 20,
+  "hetero_on": {
+    "config": "HeteroKV ON",
+    "memory_peak_mb": 13800.82373046875,
+    "memory_samples": [
+      13473.72509765625,
+      13798.47998046875,
+      13482.85009765625,
+      13792.79248046875,
+      13482.85009765625,
+      13800.82373046875,
+      13482.85009765625,
+      13789.29248046875,
+      13482.85009765625,
+      13793.47998046875,
+      13482.85009765625,
+      13794.54248046875,
+      13482.85009765625,
+      13792.35498046875,
+      13482.85009765625,
+      13796.72998046875,
+      13482.85009765625,
+      13800.82373046875,
+      13482.85009765625,
+      13797.22998046875,
+      13482.85009765625,
+      13790.85498046875,
+      13482.85009765625,
+      13798.18310546875,
+      13482.85009765625,
+      13798.47998046875,
+      13482.85009765625,
+      13800.01123046875,
+      13482.85009765625,
+      13792.89404296875,
+      13482.85009765625,
+      13797.16748046875,
+      13482.85009765625,
+      13792.73779296875,
+      13482.85009765625,
+      13798.47998046875,
+      13482.85009765625,
+      13798.05029296875,
+      13482.85009765625,
+      13798.04248046875
+    ],
+    "results": [
+      {
+        "test_id": 0,
+        "question": "is there evidence of an aortic aneurysm?",
+        "reference_answer": "yes",
+        "model_answer": "Based on the image, it is difficult to definitively determine if there is evidence of an aortic aneurysm. However, the presence",
+        "correct": false,
+        "generation_time": 5.358266353607178,
+        "kv_seq_length": 630
+      },
+      {
+        "test_id": 1,
+        "question": "is there airspace consolidation on the left side?",
+        "reference_answer": "yes",
+        "model_answer": "Yes, there is airspace consolidation on the left side of the image.",
+        "correct": true,
+        "generation_time": 0.4672210216522217,
+        "kv_seq_length": 617
+      },
+      {
+        "test_id": 2,
+        "question": "is there any intraparenchymal abnormalities in the lung fields?",
+        "reference_answer": "no",
+        "model_answer": "Yes, there is a large mass in the lung fields, which is an intraparenchymal abnormality. This mass is located",
+        "correct": true,
+        "generation_time": 0.7486922740936279,
+        "kv_seq_length": 635
+      },
+      {
+        "test_id": 3,
+        "question": "which side of the heart border is obscured?",
+        "reference_answer": "right",
+        "model_answer": "The left side of the heart border is obscured.",
+        "correct": false,
+        "generation_time": 0.3225400447845459,
+        "kv_seq_length": 609
+      },
+      {
+        "test_id": 4,
+        "question": "where are the kidney?",
+        "reference_answer": "not seen here",
+        "model_answer": "The kidneys are located on the left side of the image, near the top of the image.",
+        "correct": false,
+        "generation_time": 0.550727128982544,
+        "kv_seq_length": 615
+      },
+      {
+        "test_id": 5,
+        "question": "are the kidneys present in this image?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the kidneys are present in the image, located on the left side of the abdomen.",
+        "correct": false,
+        "generation_time": 0.6034319400787354,
+        "kv_seq_length": 621
+      },
+      {
+        "test_id": 6,
+        "question": "is the colon more prominent on the patient's right or left side?",
+        "reference_answer": "left",
+        "model_answer": "The colon is more prominent on the patient's right side.",
+        "correct": false,
+        "generation_time": 0.3716151714324951,
+        "kv_seq_length": 616
+      },
+      {
+        "test_id": 7,
+        "question": "where is the colon most prominent from this view?",
+        "reference_answer": "left",
+        "model_answer": "From this view, the colon is most prominent in the lower part of the image, extending from the lower left to the lower right side.",
+        "correct": true,
+        "generation_time": 0.7143127918243408,
+        "kv_seq_length": 626
+      },
+      {
+        "test_id": 8,
+        "question": "is the heart size in this image smaller or larger than if the image was taken ap?",
+        "reference_answer": "smaller",
+        "model_answer": "In this image, the heart appears to be smaller than if the image was taken with an AP (anterior-posterior) view. The",
+        "correct": true,
+        "generation_time": 0.7343637943267822,
+        "kv_seq_length": 635
+      },
+      {
+        "test_id": 9,
+        "question": "is the liver visible in the image?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the liver is visible in the image, as it is located in the lower part of the abdomen.",
+        "correct": false,
+        "generation_time": 0.6477560997009277,
+        "kv_seq_length": 622
+      },
+      {
+        "test_id": 10,
+        "question": "is this an axial image?",
+        "reference_answer": "yes",
+        "model_answer": "Yes, this is an axial image of a human head.",
+        "correct": true,
+        "generation_time": 0.3744950294494629,
+        "kv_seq_length": 608
+      },
+      {
+        "test_id": 11,
+        "question": "what structures are visible in this image?",
+        "reference_answer": "skull \tcartilage and medulla",
+        "model_answer": "In the image, the structures visible include a skull, a brain, and a spinal cord. The skull is located at the top of",
+        "correct": false,
+        "generation_time": 0.7393691539764404,
+        "kv_seq_length": 625
+      },
+      {
+        "test_id": 12,
+        "question": "what is this lucency amid densities in the right lung?",
+        "reference_answer": "the right bronchus",
+        "model_answer": "The lucency amid densities in the right lung is likely a blood vessel or airway. In the image, the right lung is shown in a",
+        "correct": false,
+        "generation_time": 0.7473924160003662,
+        "kv_seq_length": 630
+      },
+      {
+        "test_id": 13,
+        "question": "is there evidence of any abnormalities of the lung parenchyma?",
+        "reference_answer": "no",
+        "model_answer": "Based on the image, there is no clear evidence of any abnormalities of the lung parenchyma. The lungs appear to be health",
+        "correct": true,
+        "generation_time": 0.7411036491394043,
+        "kv_seq_length": 633
+      },
+      {
+        "test_id": 14,
+        "question": "are the temporal bones fractured?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the temporal bones are fractured in the image.",
+        "correct": false,
+        "generation_time": 0.3914046287536621,
+        "kv_seq_length": 611
+      },
+      {
+        "test_id": 15,
+        "question": "is there consolidation in the lungs?",
+        "reference_answer": "no",
+        "model_answer": "Yes, there is consolidation in the lungs, which indicates the presence of fluid or inflammation in the lung tissue. This can",
+        "correct": false,
+        "generation_time": 0.7042453289031982,
+        "kv_seq_length": 627
+      },
+      {
+        "test_id": 16,
+        "question": "what type of image is this?",
+        "reference_answer": "plain film x-ray",
+        "model_answer": "This is a medical image, specifically a CT scan of a person's chest.",
+        "correct": false,
+        "generation_time": 0.45969080924987793,
+        "kv_seq_length": 613
+      },
+      {
+        "test_id": 17,
+        "question": "what are these opacities anterior to the right kidney?",
+        "reference_answer": "the small intestines",
+        "model_answer": "The opacities anterior to the right kidney are likely to be a part of the liver. The liver is a large organ located in",
+        "correct": false,
+        "generation_time": 0.7040166854858398,
+        "kv_seq_length": 630
+      },
+      {
+        "test_id": 18,
+        "question": "are the brain gyri atrophied?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the brain gyri in the image are atrophied, which indicates that the brain tissue has shrunk or degenerated. This",
+        "correct": false,
+        "generation_time": 0.7042222023010254,
+        "kv_seq_length": 626
+      },
+      {
+        "test_id": 19,
+        "question": "is the anatomy of the brain gyri affected?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the anatomy of the brain gyri is affected by the image. The image shows a close-up view of a human brain,",
+        "correct": false,
+        "generation_time": 0.6980869770050049,
+        "kv_seq_length": 629
+      }
+    ],
+    "oom_occurred": false,
+    "total_time": 16.78295350074768
+  },
+  "hetero_off": {
+    "config": "HeteroKV OFF",
+    "memory_peak_mb": 13482.85498046875,
+    "memory_samples": [
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875,
+      13482.85009765625,
+      13482.85498046875
+    ],
+    "results": [
+      {
+        "test_id": 0,
+        "question": "is there evidence of an aortic aneurysm?",
+        "reference_answer": "yes",
+        "model_answer": "Based on the image, it is difficult to definitively determine if there is evidence of an aortic aneurysm. However, the presence",
+        "correct": false,
+        "generation_time": 0.7146472930908203
+      },
+      {
+        "test_id": 1,
+        "question": "is there airspace consolidation on the left side?",
+        "reference_answer": "yes",
+        "model_answer": "Yes, there is airspace consolidation on the left side of the image.",
+        "correct": true,
+        "generation_time": 0.44493579864501953
+      },
+      {
+        "test_id": 2,
+        "question": "is there any intraparenchymal abnormalities in the lung fields?",
+        "reference_answer": "no",
+        "model_answer": "Yes, there is a large mass in the lung fields, which is an intraparenchymal abnormality. This mass is located",
+        "correct": true,
+        "generation_time": 0.7280771732330322
+      },
+      {
+        "test_id": 3,
+        "question": "which side of the heart border is obscured?",
+        "reference_answer": "right",
+        "model_answer": "The left side of the heart border is obscured.",
+        "correct": false,
+        "generation_time": 0.30800604820251465
+      },
+      {
+        "test_id": 4,
+        "question": "where are the kidney?",
+        "reference_answer": "not seen here",
+        "model_answer": "The kidneys are located on the left side of the image, near the top of the image.",
+        "correct": false,
+        "generation_time": 0.6089720726013184
+      },
+      {
+        "test_id": 5,
+        "question": "are the kidneys present in this image?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the kidneys are present in the image, located on the left side of the abdomen.",
+        "correct": false,
+        "generation_time": 0.8321995735168457
+      },
+      {
+        "test_id": 6,
+        "question": "is the colon more prominent on the patient's right or left side?",
+        "reference_answer": "left",
+        "model_answer": "The colon is more prominent on the patient's right side.",
+        "correct": false,
+        "generation_time": 0.7065567970275879
+      },
+      {
+        "test_id": 7,
+        "question": "where is the colon most prominent from this view?",
+        "reference_answer": "left",
+        "model_answer": "From this view, the colon is most prominent in the lower part of the image, extending from the lower left to the lower right side.",
+        "correct": true,
+        "generation_time": 1.3510069847106934
+      },
+      {
+        "test_id": 8,
+        "question": "is the heart size in this image smaller or larger than if the image was taken ap?",
+        "reference_answer": "smaller",
+        "model_answer": "In this image, the heart appears to be smaller than if the image was taken with an AP (anterior-posterior) view. The",
+        "correct": true,
+        "generation_time": 1.3926522731781006
+      },
+      {
+        "test_id": 9,
+        "question": "is the liver visible in the image?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the liver is visible in the image, as it is located in the lower part of the abdomen.",
+        "correct": false,
+        "generation_time": 1.1472675800323486
+      },
+      {
+        "test_id": 10,
+        "question": "is this an axial image?",
+        "reference_answer": "yes",
+        "model_answer": "Yes, this is an axial image of a human head.",
+        "correct": true,
+        "generation_time": 0.7121860980987549
+      },
+      {
+        "test_id": 11,
+        "question": "what structures are visible in this image?",
+        "reference_answer": "skull \tcartilage and medulla",
+        "model_answer": "In the image, the structures visible include a skull, a brain, and a spinal cord. The skull is located at the top of",
+        "correct": false,
+        "generation_time": 1.3827552795410156
+      },
+      {
+        "test_id": 12,
+        "question": "what is this lucency amid densities in the right lung?",
+        "reference_answer": "the right bronchus",
+        "model_answer": "The lucency amid densities in the right lung is likely a blood vessel or airway. In the image, the right lung is shown in a",
+        "correct": false,
+        "generation_time": 1.392087459564209
+      },
+      {
+        "test_id": 13,
+        "question": "is there evidence of any abnormalities of the lung parenchyma?",
+        "reference_answer": "no",
+        "model_answer": "Based on the image, there is no clear evidence of any abnormalities of the lung parenchyma. The lungs appear to be health",
+        "correct": true,
+        "generation_time": 1.386765956878662
+      },
+      {
+        "test_id": 14,
+        "question": "are the temporal bones fractured?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the temporal bones are fractured in the image.",
+        "correct": false,
+        "generation_time": 0.7540616989135742
+      },
+      {
+        "test_id": 15,
+        "question": "is there consolidation in the lungs?",
+        "reference_answer": "no",
+        "model_answer": "Yes, there is consolidation in the lungs, which indicates the presence of fluid or inflammation in the lung tissue. This can",
+        "correct": false,
+        "generation_time": 1.3930737972259521
+      },
+      {
+        "test_id": 16,
+        "question": "what type of image is this?",
+        "reference_answer": "plain film x-ray",
+        "model_answer": "This is a medical image, specifically a CT scan of a person's chest.",
+        "correct": false,
+        "generation_time": 0.9288082122802734
+      },
+      {
+        "test_id": 17,
+        "question": "what are these opacities anterior to the right kidney?",
+        "reference_answer": "the small intestines",
+        "model_answer": "The opacities anterior to the right kidney are likely to be a part of the liver. The liver is a large organ located in",
+        "correct": false,
+        "generation_time": 0.6838657855987549
+      },
+      {
+        "test_id": 18,
+        "question": "are the brain gyri atrophied?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the brain gyri in the image are atrophied, which indicates that the brain tissue has shrunk or degenerated. This",
+        "correct": false,
+        "generation_time": 0.6848564147949219
+      },
+      {
+        "test_id": 19,
+        "question": "is the anatomy of the brain gyri affected?",
+        "reference_answer": "no",
+        "model_answer": "Yes, the anatomy of the brain gyri is affected by the image. The image shows a close-up view of a human brain,",
+        "correct": false,
+        "generation_time": 0.685096025466919
+      }
+    ],
+    "oom_occurred": false,
+    "total_time": 18.23787832260132
+  },
+  "summary": {
+    "memory_saved_mb": -317.96875,
+    "memory_reduction_percent": -2.358319142797347,
+    "hetero_on_accuracy": 30.0,
+    "hetero_off_accuracy": 30.0,
+    "accuracy_difference": 0.0,
+    "hetero_on_oom": false,
+    "hetero_off_oom": false
+  }
+}

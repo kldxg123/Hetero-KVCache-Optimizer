@@ -56,6 +56,8 @@ class HeteroKVManager:
         group_size: int = 128,
         bits: int = 4,
         bandwidth_limiter=None,
+        enable_method_d: bool = False,  # Query-aware retrieval (Method D)
+        method_d_alpha: float = 1.0,  # 1.0 = pure query-aware, 0.0 = pure historical
     ):
         self.num_layers = num_layers
         self.sink_tokens = sink_tokens
@@ -105,6 +107,19 @@ class HeteroKVManager:
 
         # Adaptive prefetch controller
         self._adaptive_controller = AdaptivePrefetchController()
+
+        # Method D: Query-aware retrieval (HybridRetrievalStrategy)
+        self._enable_method_d = enable_method_d
+        self._method_d_retriever = None
+        if enable_method_d:
+            from src.memory.query_aware_retriever import HybridRetrievalStrategy
+            self._method_d_retriever = HybridRetrievalStrategy(
+                device=device,
+                enable=True,
+                alpha=method_d_alpha,
+                fallback_to_method_c=True,
+            )
+            print(f"[Method D] Query-aware retrieval enabled | alpha={method_d_alpha}")
 
         # Async prefetcher for DRAM -> HBM overlap
         self._prefetcher: Optional[AsyncPrefetcher] = None
@@ -1040,6 +1055,108 @@ class HeteroKVManager:
             "v_zps": v_zps,
         }
 
+    def decompress_dram_chunks_method_d(
+        self,
+        layer_idx: int,
+        query_key: torch.Tensor,
+        top_k: Optional[int] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], int, str]:
+        """
+        Method D: Query-aware DRAM chunk retrieval.
+
+        Uses cosine similarity between current query K and stored chunk
+        embeddings to select the most relevant chunks for retrieval.
+
+        This is an INDEPENDENT method that does NOT affect the existing
+        adaptive (Method C) retrieval logic.
+
+        Args:
+            layer_idx: Transformer layer index
+            query_key: Current query K tensor [batch, heads, 1, head_dim]
+            top_k: Number of chunks to retrieve. If None, uses adaptive window.
+
+        Returns:
+            (dram_k, dram_v, retrieved_count, method_used)
+            method_used: "method_d" or "method_c_fallback"
+        """
+        if self._method_d_retriever is None:
+            return None, None, 0, "disabled"
+
+        prefix = f"l{layer_idx}_"
+        dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
+
+        if not dram_keys:
+            return None, None, 0, "no_dram"
+
+        # Compute adaptive window size
+        if top_k is None:
+            w_t = int(self._adaptive_controller.compute_window(
+                attention_weights=self._last_attention_weights, cache_miss=False
+            ))
+            top_k = max(1, min(w_t, len(dram_keys)))
+
+        # Use Method D to rank and select chunks
+        selected_keys, method_used = self._method_d_retriever.retrieve_chunks(
+            query_key=query_key,
+            candidate_keys=dram_keys,
+            top_k=top_k,
+            historical_scores=self._chunk_attention_scores,
+        )
+
+        if not selected_keys:
+            return None, None, 0, method_used
+
+        # Decompress selected chunks to BF16
+        dram_k_parts, dram_v_parts = [], []
+        for chunk_key in selected_keys:
+            entry = self._dram.retrieve(chunk_key)
+            if entry is None:
+                continue
+            try:
+                q_k = entry["k_data"].to(self.device, non_blocking=True)
+                s_k = entry["k_scales"].to(self.device, non_blocking=True)
+                z_k = entry["k_zps"].to(self.device, non_blocking=True)
+                q_v = entry["v_data"].to(self.device, non_blocking=True)
+                s_v = entry["v_scales"].to(self.device, non_blocking=True)
+                z_v = entry["v_zps"].to(self.device, non_blocking=True)
+
+                restored_k = self._compressor.decompress(q_k, s_k, z_k, target_dtype=torch.float16)
+                restored_v = self._compressor.decompress(q_v, s_v, z_v, target_dtype=torch.float16)
+
+                dram_k_parts.append(restored_k)
+                dram_v_parts.append(restored_v)
+            except Exception:
+                continue
+
+        if not dram_k_parts:
+            return None, None, 0, method_used
+
+        # Sort by temporal order for correct attention computation
+        selected_keys_sorted = sorted(
+            selected_keys,
+            key=lambda k: self._chunk_eviction_order.index(k) if k in self._chunk_eviction_order else 0
+        )
+        key_to_part_k = dict(zip(selected_keys, dram_k_parts))
+        key_to_part_v = dict(zip(selected_keys, dram_v_parts))
+
+        dram_k_parts_sorted = [key_to_part_k[k] for k in selected_keys_sorted if k in key_to_part_k]
+        dram_v_parts_sorted = [key_to_part_v[k] for k in selected_keys_sorted if k in key_to_part_v]
+
+        dram_k = torch.cat(dram_k_parts_sorted, dim=-2)
+        dram_v = torch.cat(dram_v_parts_sorted, dim=-2)
+        token_count = dram_k.shape[-2]
+
+        spike_mb = dram_k.element_size() * dram_k.nelement() / 1024 / 1024
+        spike_mb += dram_v.element_size() * dram_v.nelement() / 1024 / 1024
+
+        print(
+            f"  [Method D] layer={layer_idx} | method={method_used} | "
+            f"selected={len(selected_keys)}/{len(dram_keys)} chunks | "
+            f"tokens={token_count} | HBM_spike={spike_mb:.1f}MB"
+        )
+
+        return dram_k, dram_v, token_count, method_used
+
     def _get_dram_kv_quantized(
         self, layer_idx: int
     ) -> Optional[Dict[str, torch.Tensor]]:
@@ -1151,7 +1268,20 @@ class HeteroKVManager:
             self._chunk_attention_scores[chunk_key] = chunk_avg_score
         else:
             # Fallback: use FIFO order as score (older chunks = lower score)
-            self._chunk_attention_scores[chunk_key] = 1.0 / (self._eviction_counter + 1)
+            chunk_avg_score = 1.0 / (self._eviction_counter + 1)
+            self._chunk_attention_scores[chunk_key] = chunk_avg_score
+
+        # Method D: Register chunk embedding for query-aware retrieval
+        if self._method_d_retriever is not None:
+            start_pos = self._eviction_counter * k_chunk.shape[-2]
+            end_pos = start_pos + k_chunk.shape[-2]
+            self._method_d_retriever.register_chunk(
+                chunk_key=chunk_key,
+                start_pos=start_pos,
+                end_pos=end_pos,
+                key_states=k_chunk,
+                historical_attention=chunk_avg_score,
+            )
 
         if self._bandwidth_limiter is not None:
             stored = self._dram.retrieve(chunk_key)

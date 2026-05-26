@@ -55,6 +55,8 @@ class FusedHeteroCache(DynamicCache):
         bandwidth_limiter=None,
         self_healing: bool = True,
         adaptive_self_healing: bool = False,
+        enable_method_d: bool = False,  # Query-aware retrieval
+        method_d_alpha: float = 1.0,  # 1.0 = pure query-aware, 0.0 = pure historical
     ):
         super().__init__()
 
@@ -69,6 +71,8 @@ class FusedHeteroCache(DynamicCache):
         self._bandwidth_limiter = bandwidth_limiter
         self.self_healing = self_healing
         self.adaptive_self_healing = adaptive_self_healing
+        self.enable_method_d = enable_method_d
+        self.method_d_alpha = method_d_alpha
 
         # Deferred initialization: num_layers is set on first update
         self._num_layers = num_layers
@@ -79,6 +83,9 @@ class FusedHeteroCache(DynamicCache):
 
         # Self-healing: pre-computed DRAM swap-in token count
         self._swap_in_tokens: int = 0
+
+        # Method D: store the last decode query K for query-aware retrieval
+        self._last_decode_query_k: Optional[torch.Tensor] = None
 
         # Triton-optimized path: 4-bit DRAM data for fused kernel (no BF16 decompression)
         self._dram_quant_kv: Optional[Dict[str, torch.Tensor]] = None
@@ -118,6 +125,8 @@ class FusedHeteroCache(DynamicCache):
             enable_prefetch=self.enable_prefetch,
             group_size=self.group_size,
             bandwidth_limiter=self._bandwidth_limiter,
+            enable_method_d=self.enable_method_d,
+            method_d_alpha=self.method_d_alpha,
         )
         return self._manager
 
@@ -172,7 +181,25 @@ class FusedHeteroCache(DynamicCache):
 
         # Self-healing: swap in DRAM tokens during decode
         if mode == "decode" and self.self_healing and self._swap_in_tokens > 0:
-            if self.adaptive_self_healing and self.enable_triton:
+            if self.enable_method_d:
+                # ──────────────────────────────────────────────────────
+                # Method D: Query-Aware Retrieval (INDEPENDENT EXPERIMENT)
+                # 1. Use current token's K as query to compute similarity
+                # 2. Select top-k chunks by cosine similarity
+                # 3. Retrieve and decompress only selected chunks
+                # ──────────────────────────────────────────────────────
+                # key_states is the current token's K, which serves as the query
+                query_k = key_states  # [batch, heads, 1, head_dim]
+                dram_k, dram_v, count, method_used = manager.decompress_dram_chunks_method_d(
+                    layer_idx, query_k, top_k=None
+                )
+                if dram_k is not None and count > 0:
+                    out_k = torch.cat([dram_k, out_k], dim=-2)
+                    out_v = torch.cat([dram_v, out_v], dim=-2)
+                    print(f"  [Method D] Retrieved {count} tokens using {method_used}")
+                self._dram_quant_kv = None
+
+            elif self.adaptive_self_healing and self.enable_triton:
                 # ──────────────────────────────────────────────────────
                 # Path A: Dynamic Window + Triton Fused Kernel (TOGETHER)
                 # 1. AdaptivePrefetchController computes w_t from σ(A_t)

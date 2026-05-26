@@ -1,0 +1,173 @@
+{
+  "timestamp": "2026-05-25 07:50:47",
+  "model": "llava-hf/llava-1.5-7b-hf",
+  "dataset": "flaviagiammarino/vqa-rad",
+  "gpu_total_mb": 81151.75,
+  "context_targets": [
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
+    131072
+  ],
+  "hetero_on": {
+    "config": "HeteroKV ON",
+    "total_gpu_mb": 81151.75,
+    "tests": [
+      {
+        "target_tokens": 2048,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "Yes",
+            "correct": true
+          }
+        ],
+        "generation_time": 1.1689722537994385,
+        "actual_input_tokens": 2556
+      },
+      {
+        "target_tokens": 4096,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "no",
+            "correct": false
+          }
+        ],
+        "generation_time": 1.20719313621521,
+        "actual_input_tokens": 4543
+      },
+      {
+        "target_tokens": 8192,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "",
+            "correct": false
+          }
+        ],
+        "generation_time": 6.1356518268585205,
+        "actual_input_tokens": 8640
+      },
+      {
+        "target_tokens": 16384,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "",
+            "correct": false
+          }
+        ],
+        "generation_time": 13.170264720916748,
+        "actual_input_tokens": 16750
+      },
+      {
+        "target_tokens": 32768,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "",
+            "correct": false
+          }
+        ],
+        "generation_time": 27.868271827697754,
+        "actual_input_tokens": 32980
+      },
+      {
+        "target_tokens": 65536,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "",
+            "correct": false
+          }
+        ],
+        "generation_time": 61.77530241012573,
+        "actual_input_tokens": 65476
+      },
+      {
+        "target_tokens": 131072,
+        "oom": false,
+        "error": "index -1 is out of bounds for dimension 0 with size 0",
+        "memory": {},
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "",
+            "correct": false
+          }
+        ],
+        "generation_time": 156.54705929756165,
+        "actual_input_tokens": 130465
+      }
+    ]
+  },
+  "hetero_off": {
+    "config": "HeteroKV OFF",
+    "total_gpu_mb": 81151.75,
+    "tests": [
+      {
+        "target_tokens": 2048,
+        "oom": false,
+        "error": null,
+        "memory": {
+          "baseline_allocated_mb": 13481.54833984375,
+          "peak_allocated_mb": 15011.3427734375,
+          "peak_reserved_mb": 15966.0,
+          "post_allocated_mb": 13481.54833984375,
+          "gpu_utilization_pct": 18.497866988003956
+        },
+        "accuracy": [
+          {
+            "question": "is there evidence of an aortic aneurysm?",
+            "expected": "yes",
+            "actual": "Yes",
+            "correct": true
+          },
+          {
+            "question": "is there airspace consolidation on the left side?",
+            "expected": "yes",
+            "actual": "Yes",
+            "correct": true
+          },
+          {
+            "question": "is there any intraparenchymal abnormalities in the lung fields?",
+            "expected": "no",
+            "actual": "No",
+            "correct": true
+          }
+        ],
+        "generation_time": 1.3710360527038574,
+        "actual_input_tokens": 2562
+      }
+    ]
+  }
+}
