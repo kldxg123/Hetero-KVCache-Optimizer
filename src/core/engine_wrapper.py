@@ -196,7 +196,10 @@ class FusedHeteroCache(DynamicCache):
                 if dram_k is not None and count > 0:
                     out_k = torch.cat([dram_k, out_k], dim=-2)
                     out_v = torch.cat([dram_v, out_v], dim=-2)
+                    self._swap_in_tokens = count  # CRITICAL FIX: Use actual retrieved count, not full DRAM count
                     print(f"  [Method D] Retrieved {count} tokens using {method_used}")
+                else:
+                    self._swap_in_tokens = 0  # No DRAM data retrieved
                 self._dram_quant_kv = None
 
             elif self.adaptive_self_healing and self.enable_triton:
@@ -244,7 +247,8 @@ class FusedHeteroCache(DynamicCache):
         if layer_idx == 0:
             self.real_seq_len += new_len
             # After layer 0 decode, refresh DRAM token count for next step
-            if mode == "decode" and self.self_healing:
+            # Skip for Method D since we already set _swap_in_tokens with actual retrieved count
+            if mode == "decode" and self.self_healing and not self.enable_method_d:
                 self._refresh_swap_count()
 
         return out_k, out_v

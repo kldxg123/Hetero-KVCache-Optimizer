@@ -1,0 +1,233 @@
+[
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 4096,
+    "zone": "Tail",
+    "tokens": 3905,
+    "peak": 15898.64013671875,
+    "time": 1.1909756660461426,
+    "ok": false,
+    "ans": "XYZ",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 4096,
+    "zone": "Tail",
+    "tokens": 3905,
+    "peak": 15898.67041015625,
+    "time": 0.6222836971282959,
+    "ok": false,
+    "ans": "XYZ",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 4096,
+    "zone": "Tail",
+    "tokens": 3905,
+    "peak": 15898.67041015625,
+    "time": 0.5581848621368408,
+    "ok": false,
+    "ans": "XYZ",
+    "oom": false
+  },
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 5120,
+    "zone": "DRAM",
+    "tokens": 4873,
+    "peak": 15990.37158203125,
+    "time": 0.9534990787506104,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 5120,
+    "zone": "DRAM",
+    "tokens": 4873,
+    "peak": 15990.37890625,
+    "time": 0.5491964817047119,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 5120,
+    "zone": "DRAM",
+    "tokens": 4873,
+    "peak": 15990.37890625,
+    "time": 0.5536537170410156,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 6144,
+    "zone": "DRAM",
+    "tokens": 5840,
+    "peak": 16094.015625,
+    "time": 0.7012357711791992,
+    "ok": false,
+    "ans": "and",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 6144,
+    "zone": "DRAM",
+    "tokens": 5840,
+    "peak": 16094.02294921875,
+    "time": 0.749366283416748,
+    "ok": false,
+    "ans": "and",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 6144,
+    "zone": "DRAM",
+    "tokens": 5840,
+    "peak": 16094.77294921875,
+    "time": 0.712566614151001,
+    "ok": false,
+    "ans": "and",
+    "oom": false
+  },
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 6144,
+    "zone": "Sink",
+    "tokens": 5708,
+    "peak": 16070.82177734375,
+    "time": 0.6532959938049316,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 6144,
+    "zone": "Sink",
+    "tokens": 5708,
+    "peak": 16070.82080078125,
+    "time": 0.6571485996246338,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 6144,
+    "zone": "Sink",
+    "tokens": 5708,
+    "peak": 16070.82080078125,
+    "time": 0.6637439727783203,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 6144,
+    "zone": "Tail",
+    "tokens": 5955,
+    "peak": 16110.544921875,
+    "time": 1.5219831466674805,
+    "ok": false,
+    "ans": ".",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 6144,
+    "zone": "Tail",
+    "tokens": 5955,
+    "peak": 16110.546875,
+    "time": 2.4868288040161133,
+    "ok": false,
+    "ans": ".",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 6144,
+    "zone": "Tail",
+    "tokens": 5955,
+    "peak": 16110.546875,
+    "time": 1.5112135410308838,
+    "ok": false,
+    "ans": ".",
+    "oom": false
+  },
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 7168,
+    "zone": "DRAM",
+    "tokens": 6804,
+    "peak": 16175.064453125,
+    "time": 2.35111665725708,
+    "ok": false,
+    "ans": ".\n.\n.\n\n\n....\n.\n...",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 7168,
+    "zone": "DRAM",
+    "tokens": 6804,
+    "peak": 16175.07080078125,
+    "time": 2.8179285526275635,
+    "ok": false,
+    "ans": ".\n.\n.\n\n\n....\n.\n...",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 7168,
+    "zone": "DRAM",
+    "tokens": 6804,
+    "peak": 16175.07080078125,
+    "time": 1.6240906715393066,
+    "ok": false,
+    "ans": ".\n.\n.\n\n\n....\n.\n...",
+    "oom": false
+  },
+  {
+    "method": "Baseline (No Healing)",
+    "ctx": 8192,
+    "zone": "DRAM",
+    "tokens": 7769,
+    "peak": 16267.4755859375,
+    "time": 0.9500150680541992,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Method C (Triton+Adapt)",
+    "ctx": 8192,
+    "zone": "DRAM",
+    "tokens": 7769,
+    "peak": 16267.48291015625,
+    "time": 0.9361467361450195,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  },
+  {
+    "method": "Method D (Query-aware)",
+    "ctx": 8192,
+    "zone": "DRAM",
+    "tokens": 7769,
+    "peak": 16267.48291015625,
+    "time": 0.9434096813201904,
+    "ok": false,
+    "ans": "",
+    "oom": false
+  }
+]
