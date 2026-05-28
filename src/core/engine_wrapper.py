@@ -33,12 +33,11 @@ class FusedHeteroCache(DynamicCache):
     """
     HF-compatible DynamicCache subclass backed by HeteroKVManager.
 
-    Transient Cache Architecture:
-      - During prefill, the manager intercepts KV tensors but returns the
-        FULL sequence to satisfy FlashAttention dimension checks. The massive
-        transient memory is reclaimed via aggressive GC.
-      - During decode, only a fixed Sink + Tail subset resides in HBM,
-        achieving O(1) steady-state memory regardless of sequence length.
+    Short-KV Architecture:
+      - During chunked prefill, the manager physically truncates returned KV to
+        bounded Sink + Tail + Heavy-Hitter state.
+      - During decode, DRAM chunks can be selected by token-level Query x Key
+        scoring without materializing the full 128K KV in HBM.
     """
 
     def __init__(
@@ -51,12 +50,40 @@ class FusedHeteroCache(DynamicCache):
         group_size: int = 128,
         enable_quant: bool = True,
         enable_prefetch: bool = True,
-        enable_triton: bool = True,
+        enable_triton: bool = False,
         bandwidth_limiter=None,
         self_healing: bool = True,
         adaptive_self_healing: bool = False,
         enable_method_d: bool = False,  # Query-aware retrieval
         method_d_alpha: float = 1.0,  # 1.0 = pure query-aware, 0.0 = pure historical
+        method_d_gate_margin: float = 1.10,
+        method_d_token_window: int = 0,
+        method_d_layer_min: int = 0,
+        method_d_layer_max: Optional[int] = None,
+        method_d_top_k: Optional[int] = None,
+        method_d_retrieval_bias: float = 0.0,
+        method_d_score_reduce: str = "max",
+        method_d_top_r: int = 8,
+        method_d_query_history_tokens: int = 1,
+        method_d_consensus_boost: float = 0.0,
+        method_d_min_position: int = 0,
+        method_d_tail_guard_tokens: int = 0,
+        method_d_focus_radius: int = 0,
+        method_d_source_token_boost: float = 0.0,
+        method_d_source_query_tokens: int = 64,
+        method_d_require_source_overlap: bool = False,
+        method_d_allow_source_before_min_position: bool = False,
+        method_d_focus_bias: float = 0.0,
+        method_d_nonfocus_penalty: float = 0.0,
+        method_d_source_fusion_alpha: float = 0.0,
+        method_d_source_fusion_low_alpha: float = 0.0,
+        method_d_source_fusion_source_threshold: float = 0.0,
+        method_d_source_fusion_focus_only: bool = False,
+        method_d_source_cue_focus: bool = False,
+        method_d_source_cue_answer_tokens: int = 8,
+        method_d_reuse_ttl_tokens: int = 0,
+        method_d_reuse_source_threshold: float = 0.0,
+        diagnostic_bf16_dram: bool = False,
     ):
         super().__init__()
 
@@ -73,6 +100,42 @@ class FusedHeteroCache(DynamicCache):
         self.adaptive_self_healing = adaptive_self_healing
         self.enable_method_d = enable_method_d
         self.method_d_alpha = method_d_alpha
+        self.method_d_gate_margin = method_d_gate_margin
+        self.method_d_token_window = int(method_d_token_window)
+        self.method_d_layer_min = int(method_d_layer_min)
+        self.method_d_layer_max = None if method_d_layer_max is None else int(method_d_layer_max)
+        self.method_d_top_k = None if method_d_top_k is None else int(method_d_top_k)
+        self.method_d_retrieval_bias = float(method_d_retrieval_bias)
+        self.method_d_score_reduce = str(method_d_score_reduce)
+        self.method_d_top_r = int(method_d_top_r)
+        self.method_d_query_history_tokens = max(1, int(method_d_query_history_tokens))
+        self.method_d_consensus_boost = float(method_d_consensus_boost)
+        self.method_d_min_position = int(method_d_min_position)
+        self.method_d_tail_guard_tokens = int(method_d_tail_guard_tokens)
+        self.method_d_focus_radius = max(0, int(method_d_focus_radius))
+        self.method_d_source_token_boost = float(method_d_source_token_boost)
+        self.method_d_source_query_tokens = max(1, int(method_d_source_query_tokens))
+        self.method_d_require_source_overlap = bool(method_d_require_source_overlap)
+        self.method_d_allow_source_before_min_position = bool(
+            method_d_allow_source_before_min_position
+        )
+        self.method_d_focus_bias = float(method_d_focus_bias)
+        self.method_d_nonfocus_penalty = float(method_d_nonfocus_penalty)
+        self.method_d_source_fusion_alpha = max(
+            0.0, min(1.0, float(method_d_source_fusion_alpha))
+        )
+        self.method_d_source_fusion_low_alpha = max(
+            0.0, min(self.method_d_source_fusion_alpha, float(method_d_source_fusion_low_alpha))
+        )
+        self.method_d_source_fusion_source_threshold = max(
+            0.0, float(method_d_source_fusion_source_threshold)
+        )
+        self.method_d_source_fusion_focus_only = bool(method_d_source_fusion_focus_only)
+        self.method_d_source_cue_focus = bool(method_d_source_cue_focus)
+        self.method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
+        self.method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
+        self.method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
+        self.diagnostic_bf16_dram = bool(diagnostic_bf16_dram)
 
         # Deferred initialization: num_layers is set on first update
         self._num_layers = num_layers
@@ -86,6 +149,16 @@ class FusedHeteroCache(DynamicCache):
 
         # Method D: store the last decode query K for query-aware retrieval
         self._last_decode_query_k: Optional[torch.Tensor] = None
+        self._last_returned_key_positions: Dict[int, torch.Tensor] = {}
+        self._last_retrieved_counts: Dict[int, int] = {}
+        self._last_retrieved_focus_masks: Dict[int, torch.Tensor] = {}
+        self._last_retrieved_source_fusion_alpha: Dict[int, float] = {}
+        self._method_d_oracle_range: Optional[Tuple[int, int]] = None
+        self._method_d_events = []
+        self._method_d_query_history: Dict[int, torch.Tensor] = {}
+        self._source_token_ids: Optional[torch.Tensor] = None
+        self._source_cue_token_ids = []
+        self._attention_probe_events = []
 
         # Triton-optimized path: 4-bit DRAM data for fused kernel (no BF16 decompression)
         self._dram_quant_kv: Optional[Dict[str, torch.Tensor]] = None
@@ -98,6 +171,7 @@ class FusedHeteroCache(DynamicCache):
         #       cache.update() 在最后一层检测到权重时，更新 oracle
         # ──────────────────────────────────────────────────────────────
         self._pending_attention_weights: Optional[torch.Tensor] = None
+        self._pending_key_positions: Optional[torch.Tensor] = None
 
         print(
             f"[FusedHeteroCache] Initialized | "
@@ -107,6 +181,15 @@ class FusedHeteroCache(DynamicCache):
             f"triton={'ON' if self.enable_triton else 'OFF'} "
             f"self_healing={'ON' if self_healing else 'OFF'}"
             f"{f' adaptive={adaptive_self_healing}' if adaptive_self_healing else ''}"
+            f"{f' retrieval_bias={self.method_d_retrieval_bias:.3f}' if self.method_d_retrieval_bias else ''}"
+            f"{f' score_reduce={self.method_d_score_reduce}' if enable_method_d else ''}"
+            f"{f' query_history={self.method_d_query_history_tokens}' if enable_method_d else ''}"
+            f"{f' consensus={self.method_d_consensus_boost:.3f}' if self.method_d_consensus_boost else ''}"
+            f"{f' source_token_boost={self.method_d_source_token_boost:.3f}' if self.method_d_source_token_boost else ''}"
+            f"{' source_overlap_required' if self.method_d_require_source_overlap else ''}"
+            f"{f' focus_bias={self.method_d_focus_bias:.3f}' if self.method_d_focus_bias else ''}"
+            f"{f' source_fusion={self.method_d_source_fusion_alpha:.3f}' if self.method_d_source_fusion_alpha else ''}"
+            f"{f' reuse_ttl={self.method_d_reuse_ttl_tokens}' if self.method_d_reuse_ttl_tokens else ''}"
         )
 
     def _ensure_manager(self, layer_idx: int) -> HeteroKVManager:
@@ -127,7 +210,34 @@ class FusedHeteroCache(DynamicCache):
             bandwidth_limiter=self._bandwidth_limiter,
             enable_method_d=self.enable_method_d,
             method_d_alpha=self.method_d_alpha,
+            method_d_token_window=self.method_d_token_window,
+            method_d_score_reduce=self.method_d_score_reduce,
+            method_d_top_r=self.method_d_top_r,
+            method_d_consensus_boost=self.method_d_consensus_boost,
+            method_d_min_position=self.method_d_min_position,
+            method_d_tail_guard_tokens=self.method_d_tail_guard_tokens,
+            method_d_focus_radius=self.method_d_focus_radius,
+            method_d_source_token_boost=self.method_d_source_token_boost,
+            method_d_source_query_tokens=self.method_d_source_query_tokens,
+            method_d_require_source_overlap=self.method_d_require_source_overlap,
+            method_d_allow_source_before_min_position=(
+                self.method_d_allow_source_before_min_position
+            ),
+            method_d_source_cue_focus=self.method_d_source_cue_focus,
+            method_d_source_cue_answer_tokens=self.method_d_source_cue_answer_tokens,
+            method_d_reuse_ttl_tokens=self.method_d_reuse_ttl_tokens,
+            method_d_reuse_source_threshold=self.method_d_reuse_source_threshold,
+            diagnostic_bf16_dram=self.diagnostic_bf16_dram,
         )
+        if self._source_token_ids is not None:
+            self._manager.set_source_token_ids(self._source_token_ids)
+        if self._source_cue_token_ids:
+            self._manager.set_source_cue_token_ids(
+                self._source_cue_token_ids,
+                answer_tokens=self.method_d_source_cue_answer_tokens,
+            )
+        if self._method_d_oracle_range is not None:
+            self._manager.set_method_d_oracle_range(self._method_d_oracle_range)
         return self._manager
 
     # ------------------------------------------------------------------
@@ -148,14 +258,26 @@ class FusedHeteroCache(DynamicCache):
         manager = self._ensure_manager(layer_idx)
         new_len = key_states.shape[-2]
         mode = "prefill" if new_len > 1 else "decode"
+        cache_kwargs = cache_kwargs or {}
+        cache_position = cache_kwargs.get("cache_position")
+        if cache_position is not None and cache_position.numel() > 0:
+            logical_start = int(cache_position.reshape(-1)[0].item())
+        else:
+            logical_start = self.real_seq_len
+        query_states = cache_kwargs.get("query_states")
 
         out_k, out_v = manager.update(
             layer_idx=layer_idx,
             key_states=key_states,
             value_states=value_states,
             mode=mode,
-            seq_offset=self.real_seq_len,
+            seq_offset=logical_start,
         )
+        base_positions = manager.get_key_positions(layer_idx)
+        if base_positions is not None:
+            self._last_returned_key_positions[layer_idx] = base_positions
+        self._last_retrieved_counts[layer_idx] = 0
+        self._last_retrieved_focus_masks.pop(layer_idx, None)
 
         # ──────────────────────────────────────────────────────────────
         # Oracle 集成：在最后一层更新 HeavyHitterOracle
@@ -175,31 +297,92 @@ class FusedHeteroCache(DynamicCache):
             if hasattr(self, '_pending_attention_weights') and \
                self._pending_attention_weights is not None:
                 # 将注意力权重传递给 manager，更新 oracle
-                manager.update_attention_scores(self._pending_attention_weights)
+                manager.update_attention_scores(
+                    self._pending_attention_weights,
+                    key_positions=self._pending_key_positions,
+                )
                 # 清理，为下一个 token 准备（避免内存泄漏）
                 self._pending_attention_weights = None
+                self._pending_key_positions = None
 
-        # Self-healing: swap in DRAM tokens during decode
-        if mode == "decode" and self.self_healing and self._swap_in_tokens > 0:
-            if self.enable_method_d:
+        # Self-healing: swap in DRAM tokens during decode.
+        has_dram_for_layer = manager.count_dram_tokens(layer_idx) > 0
+        if mode == "decode" and self.self_healing and (self._swap_in_tokens > 0 or has_dram_for_layer):
+            self._last_retrieved_counts.pop(layer_idx, None)
+            self._last_retrieved_focus_masks.pop(layer_idx, None)
+            self._last_retrieved_source_fusion_alpha.pop(layer_idx, None)
+            if self.enable_method_d and self._method_d_layer_enabled(layer_idx):
                 # ──────────────────────────────────────────────────────
                 # Method D: Query-Aware Retrieval (INDEPENDENT EXPERIMENT)
                 # 1. Use current token's K as query to compute similarity
                 # 2. Select top-k chunks by cosine similarity
                 # 3. Retrieve and decompress only selected chunks
                 # ──────────────────────────────────────────────────────
-                # key_states is the current token's K, which serves as the query
-                query_k = key_states  # [batch, heads, 1, head_dim]
+                # Prefer RoPE-applied query_states captured by the attention
+                # wrapper.  key_states is only a compatibility fallback.
+                query_k = query_states if query_states is not None else key_states
+                if query_states is None and layer_idx == 0:
+                    print("  [Method D][WARN] query_states missing; falling back to key_states")
+                retrieval_query = self._method_d_update_query_history(layer_idx, query_k)
                 dram_k, dram_v, count, method_used = manager.decompress_dram_chunks_method_d(
-                    layer_idx, query_k, top_k=None
+                    layer_idx, retrieval_query, top_k=self.method_d_top_k
                 )
                 if dram_k is not None and count > 0:
-                    out_k = torch.cat([dram_k, out_k], dim=-2)
-                    out_v = torch.cat([dram_v, out_v], dim=-2)
-                    self._swap_in_tokens = count  # CRITICAL FIX: Use actual retrieved count, not full DRAM count
-                    print(f"  [Method D] Retrieved {count} tokens using {method_used}")
+                    use_retrieval, gate_info = self._method_d_gate_retrieval(
+                        query_k, out_k, manager
+                    )
+                    selected_chunks = manager.get_last_method_d_selection(layer_idx)
+                    effective_alpha = (
+                        self._method_d_effective_source_fusion_alpha(selected_chunks)
+                        if use_retrieval else 0.0
+                    )
+                    if use_retrieval:
+                        self._last_retrieved_source_fusion_alpha[layer_idx] = effective_alpha
+                    self._record_method_d_event(
+                        layer_idx=layer_idx,
+                        method_used=method_used,
+                        selected_chunks=selected_chunks,
+                        retrieved_count=count if use_retrieval else 0,
+                        gate_allowed=use_retrieval,
+                        gate_info=gate_info,
+                        query_history_len=retrieval_query.shape[-2],
+                    )
+                    if use_retrieval:
+                        out_k = torch.cat([dram_k, out_k], dim=-2)
+                        out_v = torch.cat([dram_v, out_v], dim=-2)
+                        retrieved_pos = manager.get_last_retrieved_positions(layer_idx)
+                        if retrieved_pos is not None and base_positions is not None:
+                            self._last_retrieved_counts[layer_idx] = int(retrieved_pos.numel())
+                            self._last_returned_key_positions[layer_idx] = torch.cat(
+                                [retrieved_pos.to(base_positions.device), base_positions], dim=0
+                            )
+                            focus_mask = manager.get_last_retrieved_focus_mask(layer_idx)
+                            if focus_mask is not None:
+                                self._last_retrieved_focus_masks[layer_idx] = focus_mask.to(
+                                    base_positions.device, non_blocking=True
+                                )
+                        self._swap_in_tokens = count  # CRITICAL FIX: Use actual retrieved count, not full DRAM count
+                        print(
+                            f"  [Method D] Retrieved {count} tokens using {method_used} | "
+                            f"dram_best={gate_info.get('dram_best', float('nan')):.6f} "
+                            f"hbm_best={gate_info.get('hbm_best', float('nan')):.6f} "
+                            f"margin={self.method_d_gate_margin:.3f}"
+                        )
+                    else:
+                        self._swap_in_tokens = 0
+                        if hasattr(manager, "clear_method_d_reuse"):
+                            manager.clear_method_d_reuse(layer_idx)
+                        print(
+                            "  [Method D] skipped DRAM retrieval by HBM gate | "
+                            f"dram_best={gate_info.get('dram_best', float('nan')):.6f} "
+                            f"hbm_best={gate_info.get('hbm_best', float('nan')):.6f} "
+                            f"margin={self.method_d_gate_margin:.3f}"
+                        )
                 else:
                     self._swap_in_tokens = 0  # No DRAM data retrieved
+                self._dram_quant_kv = None
+            elif self.enable_method_d:
+                self._swap_in_tokens = 0
                 self._dram_quant_kv = None
 
             elif self.adaptive_self_healing and self.enable_triton:
@@ -245,13 +428,244 @@ class FusedHeteroCache(DynamicCache):
                 self._dram_quant_kv = None
 
         if layer_idx == 0:
-            self.real_seq_len += new_len
+            self.real_seq_len = max(self.real_seq_len, logical_start + new_len)
             # After layer 0 decode, refresh DRAM token count for next step
             # Skip for Method D since we already set _swap_in_tokens with actual retrieved count
             if mode == "decode" and self.self_healing and not self.enable_method_d:
                 self._refresh_swap_count()
 
         return out_k, out_v
+
+    def _method_d_layer_enabled(self, layer_idx: int) -> bool:
+        """Return whether Method-D retrieval may run on this layer."""
+        if layer_idx < self.method_d_layer_min:
+            return False
+        if self.method_d_layer_max is not None and layer_idx > self.method_d_layer_max:
+            return False
+        return True
+
+    def _record_method_d_event(
+        self,
+        layer_idx: int,
+        method_used: str,
+        selected_chunks,
+        retrieved_count: int,
+        gate_allowed: bool,
+        gate_info: Dict[str, float],
+        query_history_len: int = 1,
+    ) -> None:
+        event = {
+            "layer": int(layer_idx),
+            "method": method_used,
+            "gate_allowed": bool(gate_allowed),
+            "retrieved_count": int(retrieved_count),
+            "selected_chunks": selected_chunks,
+            "dram_best": float(gate_info.get("dram_best", float("nan"))),
+            "hbm_best": float(gate_info.get("hbm_best", float("nan"))),
+            "margin": float(self.method_d_gate_margin),
+            "retrieval_bias": float(self.method_d_retrieval_bias),
+            "score_reduce": self.method_d_score_reduce,
+            "query_history_len": int(query_history_len),
+            "consensus_boost": float(self.method_d_consensus_boost),
+            "min_position": int(self.method_d_min_position),
+            "tail_guard_tokens": int(self.method_d_tail_guard_tokens),
+            "focus_radius": int(self.method_d_focus_radius),
+            "source_token_boost": float(self.method_d_source_token_boost),
+            "require_source_overlap": bool(self.method_d_require_source_overlap),
+            "allow_source_before_min_position": bool(
+                self.method_d_allow_source_before_min_position
+            ),
+            "focus_bias": float(self.method_d_focus_bias),
+            "nonfocus_penalty": float(self.method_d_nonfocus_penalty),
+            "source_fusion_alpha": float(self.method_d_source_fusion_alpha),
+            "source_fusion_focus_only": bool(self.method_d_source_fusion_focus_only),
+            "source_cue_focus": bool(self.method_d_source_cue_focus),
+            "effective_source_fusion_alpha": float(
+                self._last_retrieved_source_fusion_alpha.get(layer_idx, 0.0)
+            ),
+            "source_fusion_low_alpha": float(self.method_d_source_fusion_low_alpha),
+            "source_fusion_source_threshold": float(
+                self.method_d_source_fusion_source_threshold
+            ),
+            "reuse_ttl_tokens": int(self.method_d_reuse_ttl_tokens),
+            "reuse_source_threshold": float(self.method_d_reuse_source_threshold),
+        }
+        self._method_d_events.append(event)
+        if len(self._method_d_events) > 512:
+            self._method_d_events = self._method_d_events[-512:]
+
+    def _method_d_update_query_history(
+        self,
+        layer_idx: int,
+        query_states: torch.Tensor,
+    ) -> torch.Tensor:
+        """Keep a bounded recent-query matrix for multi-token Q x K retrieval."""
+        if self.method_d_query_history_tokens <= 1:
+            return query_states
+        q = query_states.detach()
+        if q.shape[-2] > self.method_d_query_history_tokens:
+            q = q[..., -self.method_d_query_history_tokens :, :]
+        prev = self._method_d_query_history.get(layer_idx)
+        if prev is None:
+            hist = q
+        else:
+            hist = torch.cat([prev.to(q.device, dtype=q.dtype), q], dim=-2)
+            hist = hist[..., -self.method_d_query_history_tokens :, :]
+        self._method_d_query_history[layer_idx] = hist.detach()
+        return hist
+
+    def get_method_d_events(self):
+        return list(self._method_d_events)
+
+    def set_method_d_oracle_range(self, token_range: Optional[Tuple[int, int]]) -> None:
+        """Diagnostic only: force Method-D to retrieve chunks covering a token range."""
+        self._method_d_oracle_range = None if token_range is None else (
+            int(token_range[0]),
+            int(token_range[1]),
+        )
+        if self._manager is not None:
+            self._manager.set_method_d_oracle_range(self._method_d_oracle_range)
+
+    def set_source_token_ids(self, token_ids: torch.Tensor) -> None:
+        """Register source token ids for optional source-aware reranking."""
+        self._source_token_ids = token_ids.detach().reshape(-1).cpu().long()
+        if self._manager is not None:
+            self._manager.set_source_token_ids(self._source_token_ids)
+
+    def set_source_cue_token_ids(self, cue_token_ids, answer_tokens: Optional[int] = None) -> None:
+        """Register non-oracle source cue token sequences for answer-span focus."""
+        self._source_cue_token_ids = [
+            [int(token) for token in cue] for cue in (cue_token_ids or []) if cue
+        ]
+        if answer_tokens is not None:
+            self.method_d_source_cue_answer_tokens = max(1, int(answer_tokens))
+        if self._manager is not None:
+            self._manager.set_source_cue_token_ids(
+                self._source_cue_token_ids,
+                answer_tokens=self.method_d_source_cue_answer_tokens,
+            )
+
+    def _method_d_effective_source_fusion_alpha(self, selected_chunks) -> float:
+        base = float(self.method_d_source_fusion_alpha)
+        threshold = float(self.method_d_source_fusion_source_threshold)
+        if base <= 0.0 or threshold <= 0.0:
+            return base
+        best_source_score = 0.0
+        for chunk in selected_chunks or []:
+            try:
+                best_source_score = max(best_source_score, float(chunk.get("source_token_score", 0.0)))
+            except Exception:
+                continue
+        if best_source_score < threshold:
+            return float(self.method_d_source_fusion_low_alpha)
+        return base
+
+    def record_attention_probe(
+        self,
+        layer_idx: int,
+        attn_weights: torch.Tensor,
+        key_positions: Optional[torch.Tensor],
+        cache_position: Optional[torch.Tensor],
+    ) -> None:
+        """Record first-token attribution for retrieved vs active HBM KV."""
+        if key_positions is None or attn_weights is None:
+            return
+        try:
+            weights = attn_weights.detach().float()
+            if weights.dim() != 4:
+                return
+            weights = weights[0, :, -1, :].mean(dim=0)
+            positions = key_positions.reshape(-1).to(weights.device).long()
+            if positions.numel() != weights.numel():
+                return
+            retrieved_count = min(
+                int(self._last_retrieved_counts.get(layer_idx, 0)),
+                int(weights.numel()),
+            )
+            retrieved_mask = torch.zeros_like(weights, dtype=torch.bool)
+            if retrieved_count > 0:
+                retrieved_mask[:retrieved_count] = True
+            hbm_mask = ~retrieved_mask
+            event = {
+                "layer": int(layer_idx),
+                "kv_len": int(weights.numel()),
+                "retrieved_count": int(retrieved_count),
+                "retrieved_mass": float(weights[retrieved_mask].sum().item()) if retrieved_count else 0.0,
+                "hbm_mass": float(weights[hbm_mask].sum().item()) if hbm_mask.any() else 0.0,
+            }
+            if cache_position is not None and cache_position.numel() > 0:
+                event["query_position"] = int(cache_position.reshape(-1)[-1].item())
+            if self._method_d_oracle_range is not None:
+                start, end = self._method_d_oracle_range
+                needle_mask = (positions >= start) & (positions < end)
+                event["needle_range"] = [int(start), int(end)]
+                event["needle_mass"] = float(weights[needle_mask].sum().item()) if needle_mask.any() else 0.0
+                event["retrieved_needle_mass"] = (
+                    float(weights[needle_mask & retrieved_mask].sum().item())
+                    if needle_mask.any() and retrieved_count else 0.0
+                )
+                event["needle_positions_present"] = int(needle_mask.sum().item())
+            top_k = min(5, int(weights.numel()))
+            if top_k:
+                values, indices = torch.topk(weights, k=top_k)
+                event["top_positions"] = [
+                    int(positions[int(idx)].item()) for idx in indices.detach().cpu()
+                ]
+                event["top_weights"] = [float(v) for v in values.detach().cpu()]
+            self._attention_probe_events.append(event)
+            if len(self._attention_probe_events) > 2048:
+                self._attention_probe_events = self._attention_probe_events[-2048:]
+        except Exception as exc:
+            print(f"[HeteroKV AttentionProbe][WARN] {exc}")
+
+    def get_attention_probe_events(self):
+        return list(self._attention_probe_events)
+
+    def force_shrink_hbm_budget(self, new_hbm_budget_tokens: int) -> None:
+        """Diagnostic: shrink HBM cache after prefill to isolate prefill damage."""
+        if self._manager is None:
+            return
+        self.keep_tail = int(new_hbm_budget_tokens)
+        self._manager.force_shrink_hbm_budget(new_hbm_budget_tokens)
+        self._last_returned_key_positions.clear()
+        self._last_retrieved_counts.clear()
+        self._last_retrieved_focus_masks.clear()
+        self._swap_in_tokens = 0
+
+    def _method_d_gate_retrieval(
+        self,
+        query_states: torch.Tensor,
+        hbm_key_states: torch.Tensor,
+        manager: HeteroKVManager,
+    ) -> Tuple[bool, Dict[str, float]]:
+        """Use retrieved DRAM chunks only when they beat active HBM QK evidence."""
+        try:
+            from src.memory.query_aware_retriever import QueryAwareRetriever
+
+            dram_scores = getattr(manager, "_last_retrieval_scores", {})
+            finite_scores = [
+                float(v) for v in dram_scores.values()
+                if isinstance(v, (int, float)) and v == v
+            ]
+            if not finite_scores:
+                return True, {"dram_best": float("nan"), "hbm_best": float("nan")}
+            dram_best = max(finite_scores)
+
+            q = query_states.detach().to(hbm_key_states.device, non_blocking=True).float()
+            if q.dim() == 3:
+                q = q.unsqueeze(2)
+            if q.shape[-2] != 1:
+                q = q[..., -1:, :]
+            hbm_k = hbm_key_states.detach().float()
+            hbm_scores = QueryAwareRetriever._token_dot_scores(q, hbm_k)
+            hbm_best = float(hbm_scores.reshape(-1).max().item())
+            return dram_best >= hbm_best * self.method_d_gate_margin, {
+                "dram_best": dram_best,
+                "hbm_best": hbm_best,
+            }
+        except Exception as exc:
+            print(f"  [Method D][WARN] retrieval gate failed open: {exc}")
+            return True, {"dram_best": float("nan"), "hbm_best": float("nan")}
 
     def get_seq_length(self, layer_idx: int = 0) -> int:
         # Report HBM pool + DRAM swap-in tokens so attention mask dimensions match.
@@ -262,6 +676,26 @@ class FusedHeteroCache(DynamicCache):
             return 0
         hbm_size = k_cache[layer_idx].shape[-2]
         return hbm_size + self._swap_in_tokens
+
+    def get_key_positions(self, layer_idx: int = 0) -> Optional[torch.Tensor]:
+        """Return logical positions for the K/V tensor returned by last update."""
+        if layer_idx in self._last_returned_key_positions:
+            return self._last_returned_key_positions[layer_idx]
+        if self._manager is None:
+            return None
+        return self._manager.get_key_positions(layer_idx)
+
+    def get_retrieved_count(self, layer_idx: int = 0) -> int:
+        """Return number of DRAM tokens prepended to the current layer output."""
+        return int(self._last_retrieved_counts.get(layer_idx, 0))
+
+    def get_retrieval_focus_mask(self, layer_idx: int = 0) -> Optional[torch.Tensor]:
+        """Return source-aware focus mask aligned with prepended DRAM tokens."""
+        return self._last_retrieved_focus_masks.get(layer_idx)
+
+    def get_retrieval_source_fusion_alpha(self, layer_idx: int = 0) -> float:
+        """Return dynamic source-fusion alpha for the current retrieved block."""
+        return float(self._last_retrieved_source_fusion_alpha.get(layer_idx, 0.0))
 
     @property
     def seen_tokens(self) -> int:
@@ -280,25 +714,9 @@ class FusedHeteroCache(DynamicCache):
         """
         if self._manager is None:
             return cache_position.shape[0], 0
-        k_cache = self._manager._key_cache
-        if layer_idx >= len(k_cache) or k_cache[layer_idx] is None:
-            return cache_position.shape[0], 0
-        physical_size = k_cache[layer_idx].shape[-2]
         query_len = cache_position.shape[0]
-        if query_len > 1:  # Prefill
-            # For chunked prefill: return physical_size + query_len
-            # (previous cache + current chunk) to match returned K/V size
-            return physical_size + query_len, 0
-        else:  # Decode: check if Tail is at capacity (sliding window) or still growing
-            tail_k = self._manager._tail_k[layer_idx]
-            if tail_k is not None:
-                tail_budget = self._manager.hbm_budget_tokens - self._manager.sink_tokens
-                tail_len = tail_k.shape[-2]
-                if tail_len >= tail_budget:
-                    # Tail full: cache won't grow, sliding window mode
-                    return physical_size + self._swap_in_tokens, 0
-            # Tail has room: cache will grow by 1
-            return physical_size + self._swap_in_tokens + 1, 0
+        physical_size = self._manager.predict_physical_length_after_update(layer_idx, query_len)
+        return physical_size + self._swap_in_tokens, 0
 
     def _refresh_swap_count(self) -> None:
         """Pre-compute DRAM swap-in token count for the next decode step."""
@@ -452,11 +870,11 @@ class ChunkedPrefillEngine:
                     start, end, dtype=torch.long, device=device
                 ).unsqueeze(0)
 
-            # cache_position starts from 0 for each chunk so the mask
-            # covers only the current chunk's KV (not past + current).
-            # RoPE uses position_ids with correct absolute positions.
+            # cache_position uses true absolute positions.  The short-KV
+            # attention wrapper builds a causal mask from retained key
+            # positions instead of pretending the cache is contiguous.
             chunk_cache_pos = torch.arange(
-                0, chunk_len, dtype=torch.long, device=device
+                start, end, dtype=torch.long, device=device
             )
 
             chunk_mask = None
@@ -509,10 +927,40 @@ def build_fused_cache(
     group_size: int = 128,
     enable_quant: bool = True,
     enable_prefetch: bool = True,
-    enable_triton: bool = True,
+    enable_triton: bool = False,
     bandwidth_limiter=None,
     self_healing: bool = True,
     adaptive_self_healing: bool = False,
+    enable_method_d: bool = True,
+    method_d_alpha: float = 1.0,
+    method_d_gate_margin: float = 1.10,
+    method_d_token_window: int = 0,
+    method_d_layer_min: int = 0,
+    method_d_layer_max: Optional[int] = None,
+    method_d_top_k: Optional[int] = None,
+    method_d_retrieval_bias: float = 0.0,
+    method_d_score_reduce: str = "max",
+    method_d_top_r: int = 8,
+    method_d_query_history_tokens: int = 1,
+    method_d_consensus_boost: float = 0.0,
+    method_d_min_position: int = 0,
+    method_d_tail_guard_tokens: int = 0,
+    method_d_focus_radius: int = 0,
+    method_d_source_token_boost: float = 0.0,
+    method_d_source_query_tokens: int = 64,
+    method_d_require_source_overlap: bool = False,
+    method_d_allow_source_before_min_position: bool = False,
+    method_d_focus_bias: float = 0.0,
+    method_d_nonfocus_penalty: float = 0.0,
+    method_d_source_fusion_alpha: float = 0.0,
+    method_d_source_fusion_low_alpha: float = 0.0,
+    method_d_source_fusion_source_threshold: float = 0.0,
+    method_d_source_fusion_focus_only: bool = False,
+    method_d_source_cue_focus: bool = False,
+    method_d_source_cue_answer_tokens: int = 8,
+    method_d_reuse_ttl_tokens: int = 0,
+    method_d_reuse_source_threshold: float = 0.0,
+    diagnostic_bf16_dram: bool = False,
 ) -> FusedHeteroCache:
     """
     Factory: create a fully-configured FusedHeteroCache instance.
@@ -521,7 +969,7 @@ def build_fused_cache(
         adaptive_self_healing: If True, use TRUE dynamic window self-healing
             (retrieves only top-w_t chunks based on attention scores).
             If False, use full retrieval (100% recall, O(N) memory spike).
-            Default: False (matches paper's NIAH 100% recall claim).
+            Default: False.
     """
     return FusedHeteroCache(
         num_layers=num_layers,
@@ -536,4 +984,34 @@ def build_fused_cache(
         bandwidth_limiter=bandwidth_limiter,
         self_healing=self_healing,
         adaptive_self_healing=adaptive_self_healing,
+        enable_method_d=enable_method_d,
+        method_d_alpha=method_d_alpha,
+        method_d_gate_margin=method_d_gate_margin,
+        method_d_token_window=method_d_token_window,
+        method_d_layer_min=method_d_layer_min,
+        method_d_layer_max=method_d_layer_max,
+        method_d_top_k=method_d_top_k,
+        method_d_retrieval_bias=method_d_retrieval_bias,
+        method_d_score_reduce=method_d_score_reduce,
+        method_d_top_r=method_d_top_r,
+        method_d_query_history_tokens=method_d_query_history_tokens,
+        method_d_consensus_boost=method_d_consensus_boost,
+        method_d_min_position=method_d_min_position,
+        method_d_tail_guard_tokens=method_d_tail_guard_tokens,
+        method_d_focus_radius=method_d_focus_radius,
+        method_d_source_token_boost=method_d_source_token_boost,
+        method_d_source_query_tokens=method_d_source_query_tokens,
+        method_d_require_source_overlap=method_d_require_source_overlap,
+        method_d_allow_source_before_min_position=method_d_allow_source_before_min_position,
+        method_d_focus_bias=method_d_focus_bias,
+        method_d_nonfocus_penalty=method_d_nonfocus_penalty,
+        method_d_source_fusion_alpha=method_d_source_fusion_alpha,
+        method_d_source_fusion_low_alpha=method_d_source_fusion_low_alpha,
+        method_d_source_fusion_source_threshold=method_d_source_fusion_source_threshold,
+        method_d_source_fusion_focus_only=method_d_source_fusion_focus_only,
+        method_d_source_cue_focus=method_d_source_cue_focus,
+        method_d_source_cue_answer_tokens=method_d_source_cue_answer_tokens,
+        method_d_reuse_ttl_tokens=method_d_reuse_ttl_tokens,
+        method_d_reuse_source_threshold=method_d_reuse_source_threshold,
+        diagnostic_bf16_dram=diagnostic_bf16_dram,
     )

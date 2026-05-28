@@ -1,0 +1,1208 @@
+{
+  "model": "/home/app-ahr/Hetero-KVCache-Optimizer/models/Qwen2.5-7B-Instruct",
+  "dataset": "wikitext-2-raw-v1/test",
+  "max_tokens": 8192,
+  "loss_start_token": 6144,
+  "heterokv_eval_style": "decode_suffix",
+  "attn_implementation": "sdpa",
+  "cap_gib": 22.0,
+  "cap_fraction": 0.27760337885504627,
+  "gpu_index": 3,
+  "gpu_memory_total_mb": 81920,
+  "gpu_memory_used_before_mb": 28497,
+  "gpu_reserve_gib": 4.0,
+  "allow_other_processes_if_memory_fits": true,
+  "method_d_config": {
+    "heterokv_self_healing": true,
+    "enable_method_d": true,
+    "score_reduce": "query_top_r_mean",
+    "top_r": 8,
+    "query_history_tokens": 32,
+    "top_k": 1,
+    "token_window": 128,
+    "consensus_boost": 0.0,
+    "min_position": 0,
+    "focus_radius": 8,
+    "source_token_boost": 0.0,
+    "source_query_tokens": 64,
+    "focus_bias": 0.0,
+    "nonfocus_penalty": 0.0,
+    "source_fusion_alpha": 0.0,
+    "source_fusion_focus_only": false
+  },
+  "modes": {
+    "full": {
+      "nll": 4067.193603515625,
+      "tokens": 2048,
+      "ppl": 7.285851936361412,
+      "elapsed_sec": 1.426527500152588,
+      "max_allocated_gib": 18.838268756866455,
+      "max_reserved_gib": 20.357421875
+    },
+    "heterokv": {
+      "nll": 4138.583116536862,
+      "tokens": 2048,
+      "ppl": 7.544301705985341,
+      "elapsed_sec": 547.6105763912201,
+      "max_allocated_gib": 15.325339794158936,
+      "max_reserved_gib": 15.802734375,
+      "eval_prefix_tokens": 6144,
+      "method_d_event_count": 512,
+      "method_d_events_tail": [
+        {
+          "layer": 8,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l8_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 44.99650192260742,
+              "source_token_score": 0.0,
+              "best_token_offset": 865,
+              "range_vote": 11105,
+              "token_window": [
+                801,
+                929
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                865,
+                993
+              ]
+            }
+          ],
+          "dram_best": 44.99650192260742,
+          "hbm_best": 48.889503479003906,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 9,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l9_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 47.76399612426758,
+              "source_token_score": 0.0,
+              "best_token_offset": 786,
+              "range_vote": 11106,
+              "token_window": [
+                722,
+                850
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                786,
+                914
+              ]
+            }
+          ],
+          "dram_best": 47.76399612426758,
+          "hbm_best": 73.16065979003906,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 10,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l10_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 142.77822875976562,
+              "source_token_score": 0.0,
+              "best_token_offset": 369,
+              "range_vote": 23385,
+              "token_window": [
+                305,
+                433
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                3441,
+                3569
+              ]
+            }
+          ],
+          "dram_best": 142.77822875976562,
+          "hbm_best": 180.7566680908203,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 11,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l11_e2",
+              "range": [
+                1088,
+                2112
+              ],
+              "score": 7.927605628967285,
+              "source_token_score": 0.0,
+              "best_token_offset": 473,
+              "range_vote": 11758,
+              "token_window": [
+                409,
+                537
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                1497,
+                1625
+              ]
+            }
+          ],
+          "dram_best": 7.927605628967285,
+          "hbm_best": 27.156871795654297,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 12,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l12_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 277.12646484375,
+              "source_token_score": 0.0,
+              "best_token_offset": 205,
+              "range_vote": 11107,
+              "token_window": [
+                141,
+                269
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                205,
+                333
+              ]
+            }
+          ],
+          "dram_best": 277.12646484375,
+          "hbm_best": 338.55419921875,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 13,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l13_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 276.2994384765625,
+              "source_token_score": 0.0,
+              "best_token_offset": 824,
+              "range_vote": 23386,
+              "token_window": [
+                760,
+                888
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                3896,
+                4024
+              ]
+            }
+          ],
+          "dram_best": 276.2994384765625,
+          "hbm_best": 331.8172302246094,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 14,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l14_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 443.1061706542969,
+              "source_token_score": 0.0,
+              "best_token_offset": 1017,
+              "range_vote": 11108,
+              "token_window": [
+                896,
+                1024
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 15,
+              "retrieved_range": [
+                960,
+                1088
+              ]
+            }
+          ],
+          "dram_best": 443.1061706542969,
+          "hbm_best": 438.8845520019531,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 15,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l15_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 316.51593017578125,
+              "source_token_score": 0.0,
+              "best_token_offset": 1001,
+              "range_vote": 23387,
+              "token_window": [
+                896,
+                1024
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                4032,
+                4160
+              ]
+            }
+          ],
+          "dram_best": 316.51593017578125,
+          "hbm_best": 387.41766357421875,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 16,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l16_e2",
+              "range": [
+                1088,
+                2112
+              ],
+              "score": 328.169189453125,
+              "source_token_score": 0.0,
+              "best_token_offset": 686,
+              "range_vote": 11759,
+              "token_window": [
+                622,
+                750
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                1710,
+                1838
+              ]
+            }
+          ],
+          "dram_best": 328.169189453125,
+          "hbm_best": 379.96246337890625,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 17,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l17_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 298.270751953125,
+              "source_token_score": 0.0,
+              "best_token_offset": 908,
+              "range_vote": 23388,
+              "token_window": [
+                844,
+                972
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                3980,
+                4108
+              ]
+            }
+          ],
+          "dram_best": 298.270751953125,
+          "hbm_best": 316.31597900390625,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 18,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l18_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 571.3930053710938,
+              "source_token_score": 0.0,
+              "best_token_offset": 153,
+              "range_vote": 11109,
+              "token_window": [
+                89,
+                217
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                153,
+                281
+              ]
+            }
+          ],
+          "dram_best": 571.3930053710938,
+          "hbm_best": 790.4300537109375,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 19,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l19_e3",
+              "range": [
+                2112,
+                3136
+              ],
+              "score": 285.24822998046875,
+              "source_token_score": 0.0,
+              "best_token_offset": 183,
+              "range_vote": 11080,
+              "token_window": [
+                119,
+                247
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                2231,
+                2359
+              ]
+            }
+          ],
+          "dram_best": 285.24822998046875,
+          "hbm_best": 295.1480407714844,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 20,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l20_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 111.74504089355469,
+              "source_token_score": 0.0,
+              "best_token_offset": 366,
+              "range_vote": 11110,
+              "token_window": [
+                302,
+                430
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                366,
+                494
+              ]
+            }
+          ],
+          "dram_best": 111.74504089355469,
+          "hbm_best": 141.39503479003906,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 21,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l21_e3",
+              "range": [
+                2112,
+                3136
+              ],
+              "score": 2.047743797302246,
+              "source_token_score": 0.0,
+              "best_token_offset": 9,
+              "range_vote": 11081,
+              "token_window": [
+                0,
+                128
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                2112,
+                2240
+              ]
+            }
+          ],
+          "dram_best": 2.047743797302246,
+          "hbm_best": 39.728092193603516,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 22,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l22_e2",
+              "range": [
+                1088,
+                2112
+              ],
+              "score": 119.55775451660156,
+              "source_token_score": 0.0,
+              "best_token_offset": 473,
+              "range_vote": 11760,
+              "token_window": [
+                409,
+                537
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                1497,
+                1625
+              ]
+            }
+          ],
+          "dram_best": 119.55775451660156,
+          "hbm_best": 216.7686767578125,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 23,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l23_e2",
+              "range": [
+                1088,
+                2112
+              ],
+              "score": 25.845458984375,
+              "source_token_score": 0.0,
+              "best_token_offset": 473,
+              "range_vote": 11761,
+              "token_window": [
+                409,
+                537
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                1497,
+                1625
+              ]
+            }
+          ],
+          "dram_best": 25.845458984375,
+          "hbm_best": 85.27848815917969,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 24,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l24_e1",
+              "range": [
+                64,
+                1088
+              ],
+              "score": 47.29347229003906,
+              "source_token_score": 0.0,
+              "best_token_offset": 759,
+              "range_vote": 11111,
+              "token_window": [
+                695,
+                823
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                759,
+                887
+              ]
+            }
+          ],
+          "dram_best": 47.29347229003906,
+          "hbm_best": 49.76600646972656,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 25,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l25_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 139.3461151123047,
+              "source_token_score": 0.0,
+              "best_token_offset": 164,
+              "range_vote": 23389,
+              "token_window": [
+                100,
+                228
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                3236,
+                3364
+              ]
+            }
+          ],
+          "dram_best": 139.3461151123047,
+          "hbm_best": 178.86016845703125,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 26,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l26_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 40.16339874267578,
+              "source_token_score": 0.0,
+              "best_token_offset": 443,
+              "range_vote": 23390,
+              "token_window": [
+                379,
+                507
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                3515,
+                3643
+              ]
+            }
+          ],
+          "dram_best": 40.16339874267578,
+          "hbm_best": 84.73973846435547,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        },
+        {
+          "layer": 27,
+          "method": "dot_product",
+          "gate_allowed": false,
+          "retrieved_count": 0,
+          "selected_chunks": [
+            {
+              "chunk_key": "l27_e4",
+              "range": [
+                3136,
+                4160
+              ],
+              "score": 10990.681640625,
+              "source_token_score": 0.0,
+              "best_token_offset": 671,
+              "range_vote": 23391,
+              "token_window": [
+                607,
+                735
+              ],
+              "focus_source": "dot_best",
+              "focus_token_count": 17,
+              "retrieved_range": [
+                3743,
+                3871
+              ]
+            }
+          ],
+          "dram_best": 10990.681640625,
+          "hbm_best": 13477.91796875,
+          "margin": 3.5,
+          "retrieval_bias": 0.0,
+          "score_reduce": "query_top_r_mean",
+          "query_history_len": 32,
+          "consensus_boost": 0.0,
+          "min_position": 0,
+          "tail_guard_tokens": 0,
+          "focus_radius": 8,
+          "source_token_boost": 0.0,
+          "require_source_overlap": false,
+          "focus_bias": 0.0,
+          "nonfocus_penalty": 0.0,
+          "source_fusion_alpha": 0.0,
+          "source_fusion_focus_only": false,
+          "source_cue_focus": false,
+          "effective_source_fusion_alpha": 0.0,
+          "source_fusion_low_alpha": 0.0,
+          "source_fusion_source_threshold": 0.0
+        }
+      ],
+      "memory_summary": {
+        "hbm_tokens": 114688,
+        "dram_entries": 112,
+        "dram_bytes": 122945536,
+        "max_hbm_tokens": 4160
+      }
+    }
+  },
+  "relative_ppl_delta": 0.035472827595368434,
+  "monitor": {
+    "peak_process_memory_mb": 16692,
+    "peak_gpu_memory_used_mb": 45195,
+    "samples_tail": [
+      {
+        "elapsed_sec": 686.3450372219086,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 688.7219474315643,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 690.8122153282166,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 693.286699295044,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 695.6631984710693,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 698.0494477748871,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 700.4261603355408,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 702.8019530773163,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 705.1880483627319,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 707.5656185150146,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 709.6554982662201,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 712.1300060749054,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 714.5234081745148,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40401,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 716.9097747802734,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 719.2859230041504,
+        "process_memory_mb": 16008,
+        "gpu_memory_used_mb": 40485,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 721.6623089313507,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 724.0487742424011,
+        "process_memory_mb": 16028,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 726.4265155792236,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 728.5130498409271,
+        "process_memory_mb": 15944,
+        "gpu_memory_used_mb": 40373,
+        "other_processes": {
+          "995670": 24462
+        }
+      },
+      {
+        "elapsed_sec": 730.989405632019,
+        "process_memory_mb": 15896,
+        "gpu_memory_used_mb": 40393,
+        "other_processes": {
+          "995670": 24462
+        }
+      }
+    ]
+  }
+}

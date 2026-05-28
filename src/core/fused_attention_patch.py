@@ -15,6 +15,7 @@ This is the TRUE integration path for Triton kernels in the inference pipeline.
 
 import contextlib
 import functools
+import types
 from typing import Optional, Tuple
 
 import torch
@@ -28,6 +29,251 @@ try:
     )
 except Exception:
     _TRITON_AVAILABLE = False
+
+
+def heterokv_safe_attention_forward(
+    module: nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    cache_position: Optional[torch.LongTensor],
+    key_positions: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    retrieved_count: int = 0,
+    retrieval_bias: float = 0.0,
+    retrieval_focus_mask: Optional[torch.Tensor] = None,
+    retrieval_focus_bias: float = 0.0,
+    retrieval_nonfocus_penalty: float = 0.0,
+    retrieval_source_fusion_alpha: float = 0.0,
+    retrieval_source_fusion_focus_only: bool = False,
+):
+    """Manual short-KV attention with logical-position causal masking."""
+    try:
+        from transformers.models.qwen2.modeling_qwen2 import repeat_kv
+    except Exception:
+        from transformers.models.llama.modeling_llama import repeat_kv
+
+    key_states = repeat_kv(key, module.num_key_value_groups)
+    value_states = repeat_kv(value, module.num_key_value_groups)
+    kv_len = key_states.shape[-2]
+    q_len = query.shape[-2]
+    decode_fp32 = q_len == 1
+    scores = torch.matmul(
+        query.float(), key_states.float().transpose(2, 3)
+    ) * scaling
+
+    if attention_mask is not None:
+        mask = attention_mask
+        if mask.dim() == 2:
+            mask = mask[:, None, None, :]
+        elif mask.dim() == 3:
+            mask = mask[:, None, :, :]
+        if mask.shape[-2] not in (1, q_len):
+            mask = mask[:, :, -q_len:, :]
+        if mask.shape[-1] < kv_len:
+            # Method-D prepends retrieved DRAM tokens after HF has already
+            # built a mask for the active HBM cache.  Those retrieved tokens
+            # are historical and valid; logical-position masking below still
+            # prevents future leakage.
+            pad_shape = (*mask.shape[:-1], kv_len - mask.shape[-1])
+            pad = torch.zeros(pad_shape, dtype=mask.dtype, device=mask.device)
+            mask = torch.cat([pad, mask], dim=-1)
+        elif mask.shape[-1] > kv_len:
+            mask = mask[:, :, :, -kv_len:]
+        scores = scores + mask.to(dtype=scores.dtype, device=scores.device)
+
+    if key_positions is not None and cache_position is not None:
+        q_pos = cache_position.reshape(-1)[-q_len:].to(query.device)
+        k_pos = key_positions.reshape(-1).to(query.device)
+        if k_pos.numel() == kv_len:
+            future = k_pos.view(1, 1, 1, -1) > q_pos.view(1, 1, -1, 1)
+            scores = scores.masked_fill(future, torch.finfo(scores.dtype).min)
+        else:
+            print(
+                f"[HeteroKV Attention][WARN] key_positions={k_pos.numel()} "
+                f"does not match kv_len={kv_len}"
+            )
+
+    if retrieval_bias and retrieved_count > 0:
+        # Method-D prepends retrieved DRAM tokens before the active HBM cache.
+        # A small logit bias lets a verified retrieval compete with strong
+        # sink/tail priors without changing the physical short-KV invariant.
+        n = min(int(retrieved_count), kv_len)
+        scores[..., :n] = scores[..., :n] + float(retrieval_bias)
+    if retrieved_count > 0 and retrieval_focus_mask is not None:
+        n = min(int(retrieved_count), kv_len)
+        focus = retrieval_focus_mask.reshape(-1)[:n].to(scores.device, dtype=torch.bool)
+        if focus.numel() == n and focus.any():
+            if retrieval_nonfocus_penalty:
+                scores[..., :n] = scores[..., :n] - float(retrieval_nonfocus_penalty)
+            if retrieval_focus_bias:
+                focus_bias = torch.zeros(n, dtype=scores.dtype, device=scores.device)
+                focus_bias[focus] = float(retrieval_focus_bias) + float(retrieval_nonfocus_penalty)
+                scores[..., :n] = scores[..., :n] + focus_bias.view(1, 1, 1, n)
+
+    attn_weights = nn.functional.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
+    attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    if decode_fp32:
+        attn_output = torch.matmul(attn_weights.float(), value_states.float()).to(query.dtype)
+    else:
+        attn_output = torch.matmul(attn_weights, value_states)
+
+    if retrieval_source_fusion_alpha and retrieved_count > 0:
+        n = min(int(retrieved_count), kv_len)
+        alpha = max(0.0, min(1.0, float(retrieval_source_fusion_alpha)))
+        if n > 0 and alpha > 0.0:
+            source_scores = scores[..., :n]
+            if retrieval_source_fusion_focus_only and retrieval_focus_mask is not None:
+                focus = retrieval_focus_mask.reshape(-1)[:n].to(source_scores.device, dtype=torch.bool)
+                if focus.numel() == n and focus.any():
+                    source_scores = source_scores.masked_fill(
+                        ~focus.view(1, 1, 1, n),
+                        torch.finfo(source_scores.dtype).min,
+                    )
+            source_weights = nn.functional.softmax(
+                source_scores, dim=-1, dtype=torch.float32
+            ).to(query.dtype)
+            source_values = value_states[..., :n, :]
+            if decode_fp32:
+                source_output = torch.matmul(
+                    source_weights.float(), source_values.float()
+                ).to(query.dtype)
+            else:
+                source_output = torch.matmul(source_weights, source_values)
+            attn_output = attn_output.mul(1.0 - alpha).add(source_output, alpha=alpha)
+
+    attn_output = attn_output.transpose(1, 2).contiguous()
+    return attn_output, attn_weights
+
+
+def _heterokv_attention_forward(
+    self,
+    hidden_states: torch.Tensor,
+    position_embeddings: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: Optional[torch.Tensor],
+    past_key_values=None,
+    cache_position: Optional[torch.LongTensor] = None,
+    **kwargs,
+):
+    """Qwen2/Llama attention forward patched for non-contiguous short KV."""
+    try:
+        from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
+    except Exception:
+        from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+
+    input_shape = hidden_states.shape[:-1]
+    hidden_shape = (*input_shape, -1, self.head_dim)
+
+    query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+    key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+    value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+    cos, sin = position_embeddings
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    key_positions = None
+    retrieved_count = 0
+    retrieval_bias = 0.0
+    retrieval_focus_mask = None
+    retrieval_focus_bias = 0.0
+    retrieval_nonfocus_penalty = 0.0
+    retrieval_source_fusion_alpha = 0.0
+    retrieval_source_fusion_focus_only = False
+    if past_key_values is not None:
+        cache_kwargs = {
+            "sin": sin,
+            "cos": cos,
+            "cache_position": cache_position,
+            "query_states": query_states,
+        }
+        key_states, value_states = past_key_values.update(
+            key_states, value_states, self.layer_idx, cache_kwargs
+        )
+        if hasattr(past_key_values, "get_key_positions"):
+            key_positions = past_key_values.get_key_positions(self.layer_idx)
+        if hasattr(past_key_values, "get_retrieved_count"):
+            retrieved_count = past_key_values.get_retrieved_count(self.layer_idx)
+        if hasattr(past_key_values, "get_retrieval_focus_mask"):
+            retrieval_focus_mask = past_key_values.get_retrieval_focus_mask(self.layer_idx)
+        retrieval_bias = float(getattr(past_key_values, "method_d_retrieval_bias", 0.0))
+        retrieval_focus_bias = float(getattr(past_key_values, "method_d_focus_bias", 0.0))
+        retrieval_nonfocus_penalty = float(
+            getattr(past_key_values, "method_d_nonfocus_penalty", 0.0)
+        )
+        retrieval_source_fusion_alpha = float(
+            getattr(past_key_values, "method_d_source_fusion_alpha", 0.0)
+        )
+        retrieval_source_fusion_focus_only = bool(
+            getattr(past_key_values, "method_d_source_fusion_focus_only", False)
+        )
+        if hasattr(past_key_values, "get_retrieval_source_fusion_alpha"):
+            retrieval_source_fusion_alpha = float(
+                past_key_values.get_retrieval_source_fusion_alpha(self.layer_idx)
+            )
+
+    attn_output, attn_weights = heterokv_safe_attention_forward(
+        self,
+        query_states,
+        key_states,
+        value_states,
+        attention_mask,
+        cache_position,
+        key_positions,
+        scaling=self.scaling,
+        dropout=0.0 if not self.training else self.attention_dropout,
+        retrieved_count=retrieved_count,
+        retrieval_bias=retrieval_bias,
+        retrieval_focus_mask=retrieval_focus_mask,
+        retrieval_focus_bias=retrieval_focus_bias,
+        retrieval_nonfocus_penalty=retrieval_nonfocus_penalty,
+        retrieval_source_fusion_alpha=retrieval_source_fusion_alpha,
+        retrieval_source_fusion_focus_only=retrieval_source_fusion_focus_only,
+    )
+    if past_key_values is not None and hasattr(past_key_values, "record_attention_probe"):
+        past_key_values.record_attention_probe(
+            self.layer_idx, attn_weights, key_positions, cache_position
+        )
+    if past_key_values is not None and hasattr(past_key_values, "_pending_attention_weights"):
+        past_key_values._pending_attention_weights = (
+            attn_weights[0, :, -1, :].mean(dim=0).detach()
+        )
+        past_key_values._pending_key_positions = (
+            key_positions.detach() if key_positions is not None else None
+        )
+
+    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    attn_output = self.o_proj(attn_output)
+    return attn_output, attn_weights
+
+
+def patch_qwen2_attention_for_heterokv(model: nn.Module) -> int:
+    """Patch Qwen2/Llama attention modules on a model instance."""
+    patched = 0
+    for module in model.modules():
+        name = module.__class__.__name__
+        if name not in {"Qwen2Attention", "LlamaAttention"}:
+            continue
+        if hasattr(module, "_heterokv_original_forward"):
+            continue
+        module._heterokv_original_forward = module.forward
+        module.forward = types.MethodType(_heterokv_attention_forward, module)
+        patched += 1
+    print(f"[HeteroKV Attention] patched {patched} attention modules")
+    return patched
+
+
+def unpatch_qwen2_attention_for_heterokv(model: nn.Module) -> int:
+    """Restore attention modules patched by patch_qwen2_attention_for_heterokv."""
+    restored = 0
+    for module in model.modules():
+        if hasattr(module, "_heterokv_original_forward"):
+            module.forward = module._heterokv_original_forward
+            delattr(module, "_heterokv_original_forward")
+            restored += 1
+    print(f"[HeteroKV Attention] restored {restored} attention modules")
+    return restored
 
 
 @contextlib.contextmanager

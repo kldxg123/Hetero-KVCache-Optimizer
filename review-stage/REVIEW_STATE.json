@@ -1,0 +1,36 @@
+{
+  "current_round": 14,
+  "workflow": "workflow2",
+  "workflow3_ready": false,
+  "accepted_claims": [
+    "HeteroKV is an Approximate Long-Context Cache, not a lossless full-KV replica.",
+    "FullKV 128K under a 22 GiB PyTorch cap OOMs with both eager attention and SDPA, while HeteroKV 128K runs under the same cap.",
+    "HeteroKV active HBM KV remains bounded in 128K NIAH runs: max_reserved is consistently about 20.65 GiB, with nvidia-smi process memory about 21.0-21.5 GiB.",
+    "Cue-focus alpha0.65 with Method-D token-level dot-product retrieval passed 128K required-depth NIAH on seeds 4242 and 6004: 16/16.",
+    "Source-aware Method-D reuse TTL plus token_window=64 passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, while reducing decode latency to roughly 520-563 ms/token.",
+    "A real 8K WikiText-2 PPL suffix run passed the <=5% degradation target: FullKV PPL 7.2859 vs HeteroKV PPL 7.5443, +3.55%.",
+    "A real 10K WikiText-2 PPL suffix run also passed: FullKV PPL 4.9011 vs HeteroKV PPL 4.9046, +0.07%, with process peak about 22.6 GiB."
+  ],
+  "blocked_claims": [
+    "Workflow3 / paper-writing is not ready: latency remains far above a <=2x FullKV SDPA decode baseline.",
+    "Optional 0% NIAH boundary still fails under the main configuration and under the source-before-min diagnostic branch; do not claim full boundary robustness.",
+    "The PPL evidence is real and now includes 8K and 10K suffix evaluations, but it is still not a broad 128K language-modeling suite.",
+    "A100-under-22GiB evidence supports a 4090-like memory-envelope survival claim, but not true 4090 latency.",
+    "Triton/CUDA fused retrieval attention remains unapproved and unused."
+  ],
+  "latest_success": {
+    "artifact": "experiments/niah_128k_required_depths_cuefocus_alpha065_reuse_ttl6_win64_thr35_seed7777_20260528_171805.json",
+    "summary": "Blind seed7777 required-depth 128K NIAH passed 4/4, average decode 530.2 ms/token, max_reserved 20.65 GiB."
+  },
+  "latest_failure": {
+    "artifact": "experiments/niah_128k_optional_depths_source_cue_score_reuse_ttl6_win64_seed4242_20260528_165749.json",
+    "summary": "Optional 0% still failed 0/2; optional 99% passed 2/2. Source-cue-score diagnostic did not bring early chunks into the selected path and was slower."
+  },
+  "active_hypothesis": "The strongest current main path is source-aware cue focus plus token-level Method-D retrieval, with reuse TTL6 and token_window64 as a latency-reduction layer. The mechanism is credible for required 25/50/75/90 NIAH across 20/20 cases and 8K/10K PPL, but needs either deeper latency optimization or explicit Triton permission before a <=2x claim is possible.",
+  "next_experiment": {
+    "name": "latency_breakdown_or_triton_decision",
+    "purpose": "Decide whether further pure PyTorch optimization is meaningful; current PyTorch path is still far above the FullKV SDPA decode baseline despite TTL reuse.",
+    "safety": "Continue using available GPUs only when estimated own memory remains below 30 GiB and total GPU memory remains safe for other users."
+  },
+  "last_local_process_update": "Workflow2 added Method-D source-aware reuse TTL and token-window64. Required-depth 128K NIAH is now 20/20 across seeds 4242, 6004, and 7777; PPL 8K is within +3.55% and PPL 10K within +0.07%; optional 0% and latency remain blockers."
+}

@@ -1,0 +1,730 @@
+# Hetero-KVCache-Optimizer Idea Report
+
+## Executive Summary
+
+Hetero-KVCache-Optimizer should be positioned as an **Approximate Long-Context Cache** system, not as a lossless 128K full-KV reconstruction system. The strongest idea is to prove that Qwen2.5-7B-Instruct can survive 128K context under a 4090-like 24G memory budget by physically bounding active HBM KV and recovering important evicted information through token-level Query x Key retrieval from 4-bit DRAM storage.
+
+The winning direction is:
+
+1. Physically truncate prefill KV into Sink + Tail + Heavy-Hitter.
+2. Store evicted KV in DRAM-side quantized format.
+3. Use RoPE-aware short-KV attention with true logical positions.
+4. Replace mean-K retrieval with token-level Query x Key dot-product retrieval.
+5. Validate under a 22 GiB memory cap on A100 as a conservative RTX 4090 24G survival proxy.
+
+## Ranked Ideas
+
+| Rank | Idea | Value | Feasibility | Risk | Decision |
+|---:|---|---|---|---|---|
+| 1 | 4090-24G survival proof with 22 GiB cap on A100 | Very high | High | Medium | Adopt |
+| 2 | Physical short-KV prefill: Sink + Tail + Heavy-Hitter | Very high | High | Medium | Adopt |
+| 3 | RoPE-aware short-KV attention using logical key positions | Very high | Medium | High | Adopt |
+| 4 | Token-level Query x Key dot-product retrieval from 4-bit DRAM Key | Very high | Medium | Medium | Adopt |
+| 5 | Stage-based tests before 128K runs | High | High | Low | Adopt |
+| 6 | SinkTail / HH / MeanK / DotProduct ablation matrix | High | High | Low | Adopt |
+| 7 | WikiText-2 real PPL instead of MSE proxy | High | Medium | Medium | Adopt |
+| 8 | Latency breakdown before low-level optimization | Medium-high | High | Low | Adopt |
+| 9 | Triton fused dequant attention | Potentially high | Medium-low | High | Defer |
+| 10 | Full 128K full-KV baseline | Medium | Low under 24G | High | Run only as OOM/baseline evidence when server is idle |
+
+## Adopted Ideas
+
+### 1. 4090-24G Survival Proof
+
+Use the A100 server, but run the HeteroKV acceptance path under a conservative `22 GiB` PyTorch memory cap. This gives a stronger and safer claim than simply saying the model runs on A100.
+
+Claim allowed:
+
+> HeteroKV supports Qwen2.5-7B-Instruct 128K context under a 4090-like 24G memory envelope on A100.
+
+Claim not allowed without real hardware:
+
+> HeteroKV latency on RTX 4090 is proven.
+
+### 2. Physical Short-KV Prefill
+
+The previous implementation compressed some tokens but still returned full K/V during prefill. That cannot prove O(1) HBM active KV. The adopted fix is to physically return only the short retained KV set.
+
+Required evidence:
+
+- `_prefill_update()` return length is bounded.
+- active HBM KV length stays stable as context grows.
+- evicted tokens are present in DRAM storage.
+
+### 3. Logical Position Tracking for Short KV
+
+Because Sink, Tail, Heavy-Hitter, and retrieved chunks are non-contiguous in logical sequence space, attention must not treat the short KV as a compressed contiguous sequence. The adopted design tracks true logical key positions and builds causal masking from those positions.
+
+Required evidence:
+
+- `position_ids` remain absolute.
+- `cache_position` remains absolute.
+- attention mask matches physical short-KV length.
+- no padding back to 128K.
+
+### 4. Query-Key Dot-Product Retrieval
+
+Mean-K retrieval averages away token-level needle information. The adopted design scores DRAM chunks by dequantizing candidate 4-bit Keys in small batches and computing:
+
+```text
+score = Query x Key
+```
+
+Default chunk score is max token score. Top-r mean can be logged as an auxiliary metric, but max is the default for needle-like retrieval.
+
+### 5. Stage-Gated Validation
+
+Heavy 128K tests should not be the first test. The adopted route is:
+
+1. Static and safety checks.
+2. Small tensor mechanism tests.
+3. Real model 2K/4K/8K smoke tests.
+4. 16K/32K ablations.
+5. 64K/128K survival.
+6. NIAH, PPL, latency.
+
+## Failed or Rejected Ideas
+
+### Failed Idea: Return Full K/V During Prefill and Rely on GC
+
+Reason rejected:
+
+- This keeps the attention-facing K/V full length.
+- It cannot demonstrate O(1) active HBM KV.
+- It can hide memory growth behind transient cleanup logs.
+
+Current rule:
+
+- Prefill must return physically truncated K/V.
+
+### Failed Idea: Pad Short KV Back to 128K
+
+Reason rejected:
+
+- It defeats the memory objective.
+- It can make shape checks pass while preserving O(N) HBM behavior.
+
+Current rule:
+
+- Never pad short KV back to original context length.
+
+### Failed Idea: Mean-K / Chunk Embedding / Cosine Retrieval
+
+Reason rejected:
+
+- Token-level needles are destroyed by averaging.
+- It explains previous NIAH failures at long depths.
+
+Current rule:
+
+- Mean-K can only appear in historical notes or ablation, never as the main retrieval path.
+
+### Failed Idea: Use MSE Proxy as PPL Evidence
+
+Reason rejected:
+
+- MSE reconstruction error is not real language-model perplexity.
+- It cannot prove semantic loss is controlled.
+
+Current rule:
+
+- WikiText-2 PPL must use true model loss.
+
+### Failed Idea: Claim Real 4090 Latency from A100
+
+Reason rejected:
+
+- A100 and RTX 4090 differ in memory bandwidth, PCIe behavior, kernel behavior, and scheduling.
+
+Current rule:
+
+- A100 capped tests prove a 4090-like memory envelope, not real 4090 latency.
+
+### Deferred Idea: Triton / CUDA Fused Dequant Attention
+
+Reason deferred:
+
+- It adds complexity before correctness is proven.
+- It risks hiding algorithmic bugs behind low-level optimization.
+
+Current rule:
+
+- Use PyTorch matmul first.
+- Apply Triton only if correctness, memory, NIAH, and PPL pass but latency remains above target.
+
+## Current Implementation Status
+
+Implemented so far:
+
+- Short-KV physical prefill return path.
+- Logical key-position tracking.
+- RoPE-aware attention patch for short KV.
+- Query-aware token-level dot-product retriever.
+- Stage 1 small-tensor mechanism tests.
+- 4090-24G safety gate.
+- Stage 2 smoke-test runner with shared-server safety gate.
+- Project guardrails document.
+
+Not yet run due to shared-server GPU safety:
+
+- Real Qwen2.5-7B 2K/4K/8K smoke test.
+- 16K/32K ablations.
+- 64K/128K survival test.
+- Real NIAH.
+- WikiText-2 PPL.
+- Latency breakdown.
+
+## Workflow 2.0 Idea Updates
+
+### Adopted: Calibrated 4K Before Scaling
+
+Decision:
+
+- Keep the next research loop at 4K until retrieval quality is understood.
+
+Reason:
+
+- Full KV baseline now reaches 4/4 on calibrated 4K NIAH.
+- HeteroKV no-retrieval and dotproduct both reach only 2/4 with `keep_tail=2048`.
+- Scaling this failure to 16K/32K/128K would waste GPU time and produce ambiguous evidence.
+
+### Adopted: Non-Eviction Control
+
+Decision:
+
+- Use `keep_tail=4096` as a diagnostic control, not as the final memory-saving setting.
+
+Evidence:
+
+- Full KV: 4/4.
+- HeteroKV no-retrieval with `keep_tail=4096`: 4/4.
+
+Meaning:
+
+- The attention wrapper and absolute position path are plausibly correct when the needle is still present in active HBM KV.
+- The blocker is evicted-token recovery, not basic generate compatibility.
+
+### Failed Idea: Force More Retrieval
+
+Experiment:
+
+- Method-D gate margin set to `0`.
+
+Result:
+
+- Dotproduct accuracy dropped to 0/4.
+
+Lesson:
+
+- Retrieval must be selective. More DRAM KV is not automatically better.
+
+### Failed Idea: Single Best-Token Window
+
+Experiment:
+
+- Retrieve only a 256-token window around the highest QK token inside the selected chunk.
+
+Result:
+
+- Dotproduct remained 2/4.
+
+Lesson:
+
+- The highest QK token often drifts toward generic late-chunk text rather than the needle.
+- Even when windows overlap the needle, recovered KV does not reliably steer generation yet.
+
+### Next Ranked Ideas
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | First-token attention-mass logging for retrieved DRAM vs active HBM | Prove whether retrieved tokens receive useful attention after injection | Next |
+| 2 | Oracle retrieval by known needle range | Separate ranking failure from injection/attention failure | Next diagnostic only |
+| 3 | BF16 DRAM retrieval ablation | Separate 4-bit quantization loss from cache approximation loss | Next diagnostic |
+| 4 | Multi-window retrieval around top-r tokens | Reduce risk that a single best token misses the needle | Candidate after diagnostics |
+| 5 | Proceed directly to 16K/32K NIAH | Would scale an unresolved 4K quality failure | Reject for now |
+
+## Workflow 2.0 Round 3 Idea Outcomes
+
+### Adopted Diagnostic: Retrieval-Aware First Token
+
+Problem:
+
+- HF `generate()` emits the first answer token from prefill logits.
+- Method-D retrieval only runs during decode.
+
+Decision:
+
+- HeteroKV NIAH diagnostics now use chunked prefill through the penultimate prompt token, then decode the final prompt token to generate the first answer token.
+
+Outcome:
+
+- `keep_tail=4096` control remains 4/4, so this diagnostic path is valid.
+
+### Failed Idea: Oracle Chunk Retrieval Is Sufficient
+
+Experiment:
+
+- Force retrieval of the DRAM chunk containing the known needle range.
+
+Result:
+
+- Accuracy stayed 2/4.
+
+Lesson:
+
+- Ranking is not the only blocker. Even a known-good chunk does not recover early/mid NIAH.
+
+### Failed Idea: Oracle 64-Token Window Is Sufficient
+
+Experiment:
+
+- Force retrieval of a 64-token window around the known needle range.
+
+Result:
+
+- Accuracy stayed 2/4.
+
+Lesson:
+
+- Finer retrieval helps attention mass but does not yet steer generation.
+
+### Failed Idea: 4-bit Quantization Is The Primary Cause
+
+Experiment:
+
+- Store BF16 diagnostic DRAM copies and retrieve from BF16 instead of 4-bit for oracle mode.
+
+Result:
+
+- Accuracy stayed 2/4.
+
+Lesson:
+
+- Quantization loss is not the primary blocker in the current 4K diagnostic.
+
+### Updated Next Ideas
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Full-prefill-small-control then short-cache decode | Separate prefill representation damage from decode retrieval failure | Next diagnostic |
+| 2 | Preserve semantic neighborhood spans around detected facts | Give retrieval enough local context to steer answer tokens | Candidate |
+| 3 | Retrieval-aware first-token API | Make the project compatible with standard answer-first tasks | Candidate |
+| 4 | Scale to 16K/128K semantic NIAH now | Would hide unresolved 4K failure | Reject for now |
+
+## Workflow 2.0 Round 4 Idea Outcomes
+
+### Adopted: Query-History Dot-Product Actually Uses Multiple Query Tokens
+
+Problem:
+
+- `method_d_query_history_tokens` existed in the CLI, but the retriever truncated `query_states` to the final token before scoring.
+
+Outcome:
+
+- Added multi-query scoring and `query_top_r_mean`.
+- Added a Stage1 test proving a multi-token consensus source beats a single-token spike false positive.
+
+### Failed: Focus-Only Source Bias
+
+Result:
+
+- 32K remained 4/4.
+- 128K 25% still failed.
+
+Lesson:
+
+- Correct chunks can be retrieved but still lose inside the attention/fusion stage.
+
+### Failed: Stronger Bias And Top-K Shrinking Alone
+
+Result:
+
+- Stronger focus bias shifted outputs but did not recover the target.
+- top4/top1 source windows remained 32K-correct but 128K 25%-incorrect.
+
+Lesson:
+
+- False positives must be reranked before fusion; simply changing attention weights is not enough.
+
+### Diagnostic Only: Oracle Source Fusion
+
+Result:
+
+- 128K 25% passed when the correct source was forced.
+
+Lesson:
+
+- Source-aware fusion can use a correct retrieved source.
+- The blocker was real source selection, not the fusion branch alone.
+
+### Adopted: Source-Token Lexical Reranker
+
+Method:
+
+- Register source token ids as lightweight metadata.
+- Rerank DRAM chunks with rare query/source token overlap.
+- Do not use needle position, target code, or oracle labels.
+
+Result:
+
+- 32K sanity: 4/4.
+- 128K 25% single-depth: 1/1.
+- 128K required depths 25/50/75/90: 4/4.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Multi-trial 128K NIAH with source-token reranker | Check robustness beyond one seed/code per depth | Next |
+| 2 | Optional 0%/99% depths | Stress boundary positions | Next |
+| 3 | Real WikiText-2 PPL | Measure general semantic degradation | Next |
+| 4 | Latency breakdown | Quantify source-token reranker and source fusion overhead | Next after quality |
+| 5 | Triton/CUDA fused dequant attention | Optimize only if quality passes and latency is >2x | Defer |
+
+### Boundary Depth Outcome
+
+| Idea | Result | Decision |
+|---|---|---|
+| Optional 99% depth | Passed | Keep as supporting evidence |
+| Optional 0% depth with main min-position filter | Failed | Record as boundary failure |
+| Optional 0% depth with `min_position=0` | Failed | Unresolved prefix-boundary weakness |
+
+Updated lesson:
+
+- The current mechanism is strong enough for required 25/50/75/90 NIAH at 128K.
+- It is not yet robust at the exact prefix boundary.  Avoid claiming 0% success.
+
+## Workflow 2.0 Round 11-14 Idea Outcomes
+
+### Adopted: Source-Aware Method-D Reuse TTL
+
+Method:
+
+- Keep the first retrieval as real token-level Query x Key dot-product.
+- If the selected source chunk has enough source evidence, reuse that chunk for a short TTL across following decode tokens.
+- Log reused retrieval separately as `*_reuse` with `reuse_hit=True`.
+- Do not call this fresh dot-product evidence.
+
+Best current setting:
+
+- `method_d_reuse_ttl_tokens=6`
+- `method_d_reuse_source_threshold=35`
+- `method_d_token_window=64`
+
+Result:
+
+- seed4242 required-depth 128K: `8/8`, average decode `544.6 ms/token`.
+- seed6004 required-depth 128K: `8/8`, average decode `562.8 ms/token`.
+- seed7777 blind required-depth 128K: `4/4`, average decode `530.2 ms/token`.
+- max reserved remained `20.6465 GiB`.
+
+Decision:
+
+- Adopt as the current PyTorch main path for NIAH latency reduction.
+
+### Failed: Layer-Subset Retrieval
+
+| Variant | Result | Decision |
+|---|---:|---|
+| layers `20-27` | failed sensitive seed6004 | Reject |
+| layers `8-27` | seed4242 required-depth `7/8` | Reject |
+| layers `4-27` | seed4242 required-depth `7/8` | Reject |
+
+Lesson:
+
+- Skipping Method-D on early/mid layers causes real quality loss.
+
+### Failed Or Marginal: TTL And Window Micro-Tuning
+
+| Idea | Result | Lesson |
+|---|---:|---|
+| TTL source threshold `45` | no reuse | Threshold exceeded actual source score. |
+| TTL12 with window128 | correct, small single-case gain | Not enough to justify replacing TTL6 without broader validation. |
+| `query_history=16` | correct, no speed gain | Bottleneck is not dominated by query-history length. |
+| TTL12 with window64 | correct, marginal single-case gain | TTL6 remains safer as main path. |
+
+### Failed: Optional 0% Boundary Fixes
+
+| Idea | Result | Decision |
+|---|---:|---|
+| Main config optional 0% | `0/2` | Known boundary failure |
+| `allow_source_before_min_position` | `0/2` | Reject |
+| source-cue-score before min-position | `0/2`, slower | Reject |
+
+Lesson:
+
+- The prefix-boundary failure needs a dedicated retention/retrieval design, not another small reranker tweak.
+
+### Current Ranked Ideas
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Request/plan Triton fused dequant attention | Current PyTorch path is still far slower than FullKV SDPA decode | Candidate, requires user approval |
+| 2 | Dedicated prefix-boundary retention path | Address optional 0% without weakening required-depth robustness | Candidate |
+| 3 | Broader PPL suite | Extend current 8K/10K evidence toward paper-grade semantic-loss evidence | Candidate |
+| 4 | Larger NIAH statistics | Move beyond 2 seeds x 2 trials/depth | Candidate |
+| 5 | True 4090 replication | Convert A100-under-envelope claim into hardware claim | Later |
+
+### Adopted Evidence: 10K PPL Follow-Up
+
+Result:
+
+- FullKV PPL: `4.9011`
+- HeteroKV PPL: `4.9046`
+- Relative delta: `+0.07%`
+- Artifact: `experiments/ppl_10k_prefix8192_gate35_nofusion_sdpa_autogpu_20260528_170936.json`
+
+Decision:
+
+- Keep as stronger semantic-loss evidence alongside the earlier 8K `+3.55%` run.
+- Still do not claim broad 128K PPL robustness.
+
+## Workflow 2.0 Round 5 Idea Outcomes
+
+### Adopted: Decode-Suffix PPL Harness
+
+Problem:
+
+- Chunked prefill PPL does not exercise decode-time Method-D retrieval, so it cannot evaluate the real retrieval path.
+
+Outcome:
+
+- Added a WikiText-2 PPL script with `decode_suffix` mode.
+- It preloads a compressed prefix, then computes next-token CE loss one token at a time.
+- Source-token metadata is updated using only already observed tokens, avoiding future-token leakage in PPL.
+
+### Failed: Reusing Aggressive NIAH Source Fusion For WikiText PPL
+
+Result:
+
+- 512-token suffix PPL worsened from `6.7392` to `33.2591` when source fusion was applied aggressively.
+
+Lesson:
+
+- NIAH answer recovery and generic language-modeling PPL have different false-positive tolerances.
+- Source-aware fusion must be gated or disabled when the retrieval evidence is weak.
+
+### Partially Adopted: Strict False-Positive Gate For PPL
+
+Result:
+
+- Raising the gate to `3.5`, using `top_k=1`, and disabling source fusion removed the catastrophic PPL failure.
+- On 4K/prefix3072/keep_tail2048, HeteroKV suffix PPL was `5.1463` vs full `6.2006`.
+
+Lesson:
+
+- Strict gating is a viable PPL-safe mode.
+- Do not claim the aggressive NIAH source-fusion configuration is universally PPL-safe.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Multi-trial 128K NIAH with the source-token reranker | Test robustness beyond one code per required depth | Next |
+| 2 | Latency breakdown for aggressive NIAH config and strict PPL config | Quantify overhead and expose retrieval cost | Next |
+| 3 | Adaptive false-positive gate | Use aggressive retrieval only when source evidence is strong | Candidate |
+| 4 | Longer WikiText suffix PPL if GPU remains safe | Reduce sample noise beyond 4K | Candidate |
+| 5 | Retry optional 0% boundary with prefix-aware source handling | Address known boundary failure | Lower priority |
+
+### Adopted: 128K Latency Breakdown Instrumentation
+
+Outcome:
+
+- Added per-case timing to NIAH outputs.
+- Captured a 128K 50% depth main-path run:
+  - prefill `62.70 s`;
+  - decode `30.16 s`;
+  - decode `1206.44 ms/step`;
+  - peak process memory `20.44 GiB`.
+
+Lesson:
+
+- The project now has a real latency artifact, but not yet a baseline ratio.
+- Full-KV or no-retrieval baselines should be run only when server safety allows.
+
+## Workflow 2.0 Round 7 Idea Outcomes
+
+### Failed: Single-Trial Success Was Enough
+
+Result:
+
+- The previous 128K required-depth main path passed `4/4`, but multi-trial required depths passed only `6/8`.
+
+Lesson:
+
+- Required-depth NIAH needs at least small multi-trial robustness before paper claims.
+
+### Partially Failed: Source-Overlap Hard Filter Alone
+
+Result:
+
+- Filtering zero-overlap false-positive chunks improved retrieved-source cleanliness but still passed only `2/4` on the previously weak 25/50 retry.
+
+Lesson:
+
+- Ranking correctness is necessary but not sufficient; retrieved source must also influence answer-token generation.
+
+### Failed: Static Source Fusion Alpha
+
+Result:
+
+- Strong static alpha fixed 25/50 but broke 90.
+- Middle alpha was worse overall.
+
+Lesson:
+
+- Early/mid-depth and near-tail cases need different fusion strength.
+
+### Adopted: Dynamic Source-Aware Fusion
+
+Method:
+
+- Keep source-overlap hard filtering.
+- Use high fusion alpha when source-token evidence is strong.
+- Fall back to lower fusion alpha when source evidence is weaker.
+
+Final result:
+
+- 128K required depths 25/50/75/90, 2 trials each: `8/8`.
+- Peak process memory: `20.4375 GiB`.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | More WikiText-2 PPL samples | Reduce small-sample variance in the 4K suffix PPL result | Candidate |
+| 2 | Fair optimized full-KV baseline using SDPA/FlashAttention if available | Replace failed eager full-attention baseline with a feasible latency reference | Candidate |
+| 3 | Optional 0% boundary-specific repair | Fix known prefix-boundary weakness | Candidate |
+| 4 | Dynamic gate/fusion ablation table | Quantify each structural addition separately | Candidate |
+| 5 | Triton/CUDA fused dequant attention | Only after quality is locked and latency ratio demands it | Defer |
+
+## Workflow 2.0 Round 8 Idea Outcomes
+
+### Confirmed: Full-KV 128K Cannot Be The 24G Survival Baseline
+
+Result:
+
+- FullKV 128K under the same 22 GiB PyTorch cap OOMed.
+- Artifact: `experiments/niah_fullkv_128k_cap22_20260527_231220.json`.
+- Error included a failed `16.00 GiB` allocation while the 22 GiB cap was already nearly saturated.
+
+Lesson:
+
+- The 24G-envelope survival proof should compare HeteroKV survival against FullKV OOM under the same cap.
+- This is a valid memory-survival control, but it cannot provide latency ratio because it does not complete.
+
+### Confirmed: Eager Full-Attention 128K Is Not A Feasible A100 Latency Baseline
+
+Result:
+
+- FullKV 128K with a wide 75 GiB A100 cap also OOMed.
+- Artifact: `experiments/niah_fullkv_128k_cap75_20260527_231309.json`.
+- The failure attempted an `895.92 GiB` allocation, showing that the eager full-attention baseline is dominated by attention-score materialization, not only KV memory.
+
+Lesson:
+
+- Do not claim a 128K `<=2x` latency ratio against this baseline.
+- A fair latency baseline requires an optimized full-attention implementation such as SDPA/FlashAttention if available, or a shorter-context reference clearly labeled as such.
+
+### Recorded: Internal No-Retrieval Latency Is Fast But Quality-Failing
+
+Result:
+
+- HeteroKV 128K no-retrieval latency: prefill `62.79 s`, decode `82.33 ms/step`.
+- Artifact: `experiments/niah_heterokv_128k_noretrieval_latency_20260527_231538.json`.
+- Quality failed by generating `000000` instead of the target.
+
+Lesson:
+
+- Retrieval/fusion is the dominant decode overhead and is also necessary for NIAH correctness.
+- This is an internal ablation, not an accepted system configuration.
+
+### Recorded: 8K Short-Context Speed References
+
+Result:
+
+- FullKV 8K wide-cap reference passed but used `32.61 GiB` reserved memory:
+  `experiments/niah_fullkv_8k_cap75_latency_20260527_231358.json`.
+- HeteroKV 8K under 22 GiB passed with `19.86 GiB` reserved memory:
+  `experiments/niah_heterokv_8k_cap22_latency_20260527_231448.json`.
+
+Lesson:
+
+- The 8K references are useful sanity checks but should not be used to prove 128K latency.
+- HeteroKV's main paper claim remains memory survival plus semantic recovery at 128K, with latency reported as A100-under-cap measurement and optimization target.
+
+## Workflow 2.0 Round 9 Idea Outcomes
+
+### Adopted For Next Probe: Focus-Only Source Fusion
+
+Problem:
+
+- A new seed-6004, 128K, 50% depth run failed even though Method-D retrieval was active.
+- The output drifted toward `000008...` and repeated needle markup, suggesting that source-aware fusion over an entire retrieved chunk may inject too much nearby template/filler context.
+
+Idea:
+
+- Keep token-level Query x Key retrieval unchanged.
+- Keep oracle/diagnostic paths separate.
+- Add an optional `source_fusion_focus_only` mode so the source-only fusion step attends only to the focus window around matched source tokens instead of the whole retrieved 2048-token chunk.
+
+Decision:
+
+- Implemented locally as a structural probe, behind an explicit flag.
+- Must be tested first on the failing seed-6004 case.
+- If it fixes seed-6004, run regression on the previous 25/50/75/90 required-depth suite before adopting it as the new main result.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Focus-only source fusion | Reduce retrieved-chunk filler/template contamination | Implemented locally, pending remote test |
+| 2 | Broader multi-seed 128K NIAH | Replace fragile 8/8 evidence with stronger robustness | Next after probe |
+| 3 | More WikiText-2 PPL samples | Strengthen semantic-loss claim | Candidate |
+| 4 | Retrieval overhead reduction | Address ~1s/step HeteroKV decode | Candidate after quality |
+| 5 | Triton/CUDA fused dequant attention | Only after quality is locked and user approves | Defer |
+
+## Workflow 2.0 Round 10 Idea Outcomes
+
+### Failed: Strong Focus-Only Fusion Alone
+
+Result:
+
+- alpha `0.75` improved seed6004 but still missed the first digit.
+- alpha `1.0` over-focused `[NEEDLE]` markup.
+
+Lesson:
+
+- Retrieved chunk focus must distinguish answer-bearing tokens from source cue and markup tokens.
+
+### Adopted: Non-Oracle Source Cue Focus
+
+Method:
+
+- Register cue token sequences from the prompt template, not the answer.
+- Focus the tokens immediately after cues like `The target code is `.
+- Keep this separate from oracle retrieval and disabled for PPL.
+
+Best configuration:
+
+- cue-focus alpha `0.65`;
+- token window `128`;
+- focus bias `4.0`;
+- nonfocus penalty `1.0`.
+
+Result:
+
+- seed4242 required-depth 128K: `8/8`.
+- seed6004 required-depth 128K: `8/8`.
+- optional 99%: `2/2`.
+- optional 0%: `0/2`.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Broader real PPL when GPU is free | Strengthen semantic-loss claim beyond the current 4K suffix sample | Next safe-window task |
+| 2 | Retrieval overhead reduction | Current NIAH decode is about 1.1-1.75 s/token | Candidate |
+| 3 | Optional 0% prefix-boundary handling | Fix documented boundary weakness without harming required depths | Candidate |
+| 4 | Larger multi-seed NIAH table | Move from strong prototype evidence to paper-grade statistics | Candidate |
+| 5 | Triton/CUDA fused dequant attention | Only after quality/PPL claims are stable and user approves | Defer |

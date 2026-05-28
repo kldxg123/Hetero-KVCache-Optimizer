@@ -38,7 +38,8 @@ class AttentionCompetitionQueue:
         scores: torch.Tensor,
         compressed: Optional[Dict] = None,
         layer_idx: int = 0,
-        prefix: str = "token"
+        prefix: str = "token",
+        positions: Optional[torch.Tensor] = None,
     ):
         """
         添加tokens到竞争队列
@@ -56,6 +57,10 @@ class AttentionCompetitionQueue:
         # Handle scores: if single score, broadcast to all tokens
         if scores.numel() == 1:
             scores = scores.expand(num_tokens)
+        if positions is None:
+            positions = torch.full((num_tokens,), -1, dtype=torch.long, device=k.device)
+        elif positions.numel() == 1 and num_tokens > 1:
+            positions = positions.expand(num_tokens)
 
         for i in range(num_tokens):
             token_id = f"{prefix}_{layer_idx}_{self._token_counter}"
@@ -66,6 +71,7 @@ class AttentionCompetitionQueue:
                 'score': scores[i].item() if scores.dim() > 0 else float(scores),
                 'compressed': compressed,
                 'layer': layer_idx,
+                'position': int(positions[i].item()),
             }
 
             self._token_counter += 1
@@ -105,6 +111,33 @@ class AttentionCompetitionQueue:
             del self.queue[token_id]
 
         return k_cat, v_cat, scores_tensor
+
+    def dequeue_top_k_with_positions(
+        self, k: int
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return top-k entries and their original logical positions."""
+        if not self.queue:
+            return None, None, None, None
+
+        sorted_items = sorted(self.queue.items(), key=lambda x: x[1]['score'], reverse=True)
+        top_k_items = sorted_items[:k]
+        if not top_k_items:
+            return None, None, None, None
+
+        k_list = [item[1]['k'] for item in top_k_items]
+        v_list = [item[1]['v'] for item in top_k_items]
+        scores_list = [item[1]['score'] for item in top_k_items]
+        pos_list = [item[1].get('position', -1) for item in top_k_items]
+
+        k_cat = torch.cat(k_list, dim=-2)
+        v_cat = torch.cat(v_list, dim=-2)
+        scores_tensor = torch.tensor(scores_list, dtype=torch.float32, device=k_list[0].device)
+        pos_tensor = torch.tensor(pos_list, dtype=torch.long, device=k_list[0].device)
+
+        for token_id, _ in top_k_items:
+            del self.queue[token_id]
+
+        return k_cat, v_cat, scores_tensor, pos_tensor
 
     def get_low_score_tokens(self, threshold: float, max_tokens: Optional[int] = None) -> List[str]:
         """

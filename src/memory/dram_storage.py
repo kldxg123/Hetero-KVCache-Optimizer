@@ -89,14 +89,24 @@ class DRAMStorageManager:
         if chunk_key in self._table:
             self._total_bytes -= self._entry_bytes(chunk_key)
 
-        # Transfer to CPU pinned memory for zero-copy DMA
+        def _to_cpu_pinned(t: torch.Tensor) -> torch.Tensor:
+            if t.device.type != "cpu":
+                t = t.detach().cpu()
+            if torch.cuda.is_available() and not t.is_pinned():
+                try:
+                    t = t.pin_memory()
+                except RuntimeError:
+                    pass
+            return t
+
+        # Transfer to CPU pinned memory for zero-copy DMA when available.
         entry = {
-            "k_data": q_k.cpu().pin_memory(),
-            "k_scales": k_scales.cpu().pin_memory(),
-            "k_zps": k_zps.cpu().pin_memory(),
-            "v_data": q_v.cpu().pin_memory(),
-            "v_scales": v_scales.cpu().pin_memory(),
-            "v_zps": v_zps.cpu().pin_memory(),
+            "k_data": _to_cpu_pinned(q_k),
+            "k_scales": _to_cpu_pinned(k_scales),
+            "k_zps": _to_cpu_pinned(k_zps),
+            "v_data": _to_cpu_pinned(q_v),
+            "v_scales": _to_cpu_pinned(v_scales),
+            "v_zps": _to_cpu_pinned(v_zps),
         }
         self._table[chunk_key] = entry
         self._total_bytes += entry_bytes
@@ -114,13 +124,30 @@ class DRAMStorageManager:
         if not all(k in entry for k in required):
             raise ValueError(f"Entry missing required keys. Need: {required}")
 
-        # Ensure all tensors are on pinned CPU memory
+        # Ensure all tensors are on pinned CPU memory when CUDA pinning is available.
         pinned_entry = {}
         entry_bytes = 0
         for key in required:
             t = entry[key]
-            if t.device.type != "cpu" or not t.is_pinned():
-                t = t.cpu().pin_memory()
+            if t.device.type != "cpu":
+                t = t.detach().cpu()
+            if torch.cuda.is_available() and not t.is_pinned():
+                try:
+                    t = t.pin_memory()
+                except RuntimeError:
+                    pass
+            pinned_entry[key] = t
+            entry_bytes += t.element_size() * t.nelement()
+        for key, t in entry.items():
+            if key in pinned_entry or not torch.is_tensor(t):
+                continue
+            if t.device.type != "cpu":
+                t = t.detach().cpu()
+            if torch.cuda.is_available() and not t.is_pinned():
+                try:
+                    t = t.pin_memory()
+                except RuntimeError:
+                    pass
             pinned_entry[key] = t
             entry_bytes += t.element_size() * t.nelement()
 

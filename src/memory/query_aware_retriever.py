@@ -1,271 +1,266 @@
 """
-Query-Aware DRAM Chunk Retrieval (Method D)
-============================================
+Token-level Query x Key retrieval for DRAM-resident KV chunks.
 
-独立实现方案 D：基于当前 query 的语义相似度检索 DRAM chunks。
+This module intentionally avoids mean-K, pooled chunk embeddings, and cosine
+similarity on averaged features.  It ranks candidate chunks by dequantizing one
+small DRAM chunk at a time and computing approximate attention scores:
 
-理论依据：
-- QK^T 相似度在注意力机制中天然存在
-- 假设：与当前 query K 相似度高的历史 chunks 更可能被 attend 到
+    score = query_states @ key_states.T
 
-实现原则：
-1. 独立模块，不破坏现有架构
-2. 通过配置开关启用
-3. Fallback 到方案 C（动态窗口）
+The temporary dequantized Key and score tensors are released after each chunk.
 """
 
-import torch
-import torch.nn.functional as F
-from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import torch
 
 
 @dataclass
-class ChunkEmbeddingMetadata:
-    """
-    每个 DRAM chunk 的 embedding 元数据。
-
-    存储：
-    - chunk 的平均 K embedding（用于与 query K 计算相似度）
-    - chunk 的位置信息
-    - 历史注意力分数（用于 fallback 到方案 C）
-    """
-    chunk_key: str  # DRAM storage key
+class ChunkMetadata:
+    chunk_key: str
     start_pos: int
     end_pos: int
-    mean_k_embedding: torch.Tensor  # [head_dim] 存在 CPU 上节省 GPU 内存
-    historical_attention: float = 0.0  # 历史平均注意力分数（方案 C fallback）
+    historical_attention: float = 0.0
 
 
 class QueryAwareRetriever:
-    """
-    Query-aware DRAM chunk retriever.
-
-    核心思想：
-    - 在每次驱逐到 DRAM 时，计算并存储该 chunk 的平均 K embedding
-    - 在 decode 步骤，将当前 query 的 K 与所有 DRAM chunk embeddings 计算余弦相似度
-    - 检索相似度最高的 top-k 个 chunks
-
-    与方案 C 的区别：
-    - 方案 C：按历史注意力分数排序（静态）
-    - 方案 D：按当前 query 的语义相似度排序（动态）
-    """
+    """Rank DRAM chunks with token-level dot-product scoring."""
 
     def __init__(
         self,
-        device: str = 'cuda',
-        alpha: float = 1.0,  # 1.0 = 纯 query-aware, 0.0 = 纯历史注意力
-        min_similarity_threshold: float = 0.0,  # 最低相似度阈值
+        device: str = "cuda",
+        alpha: float = 1.0,
+        min_similarity_threshold: float = 0.0,
+        score_reduce: str = "max",
+        top_r: int = 8,
     ):
-        """
-        Args:
-            device: 计算设备
-            alpha: 混合系数
-                1.0 = 完全使用 query 相似度（纯方案 D）
-                0.0 = 完全使用历史注意力（方案 C fallback）
-                0.5 = 混合两种信号
-            min_similarity_threshold: 只检索相似度超过阈值的 chunks
-        """
         self.device = device
         self.alpha = alpha
         self.min_similarity_threshold = min_similarity_threshold
-
-        # 存储所有 DRAM chunks 的元数据
-        self.chunk_metadata: Dict[str, ChunkEmbeddingMetadata] = {}
+        self.score_reduce = score_reduce
+        self.top_r = top_r
+        self.chunk_metadata: Dict[str, ChunkMetadata] = {}
+        self.last_scores: Dict[str, float] = {}
+        self.last_best_token_offsets: Dict[str, int] = {}
 
     def register_chunk(
         self,
         chunk_key: str,
         start_pos: int,
         end_pos: int,
-        key_states: torch.Tensor,  # [batch, heads, seq_len, head_dim]
         historical_attention: float = 0.0,
+        key_states: Optional[torch.Tensor] = None,
     ) -> None:
-        """
-        当一个 chunk 被驱逐到 DRAM 时，注册其元数据。
-
-        计算 chunk 的平均 K embedding（跨 batch、heads、seq_len 维度）。
-        存储在 CPU 上以节省 GPU 内存。
-        """
-        # key_states: [batch, heads, seq_len, head_dim]
-        # 计算跨所有维度的平均 embedding
-        mean_k = key_states.mean(dim=(0, 1, 2))  # [head_dim]
-
-        # detach 并移到 CPU
-        mean_k_cpu = mean_k.detach().cpu()
-
-        self.chunk_metadata[chunk_key] = ChunkEmbeddingMetadata(
+        # key_states is accepted for backward compatibility but is deliberately
+        # ignored; the main path scores against the 4-bit DRAM Key itself.
+        self.chunk_metadata[chunk_key] = ChunkMetadata(
             chunk_key=chunk_key,
             start_pos=start_pos,
             end_pos=end_pos,
-            mean_k_embedding=mean_k_cpu,
             historical_attention=historical_attention,
         )
 
-    def compute_query_similarities(
+    def _reduce_token_scores(self, scores: torch.Tensor) -> float:
+        if self.score_reduce == "query_top_r_mean" and scores.dim() == 4:
+            per_query = scores.float().amax(dim=(0, 1, 3))
+            if per_query.numel() == 0:
+                return float("-inf")
+            k = min(max(1, self.top_r), per_query.numel())
+            return float(torch.topk(per_query, k=k, largest=True).values.mean().item())
+        if self.score_reduce == "query_mean_max" and scores.dim() == 4:
+            per_query = scores.float().amax(dim=(0, 1, 3))
+            return float(per_query.mean().item()) if per_query.numel() else float("-inf")
+
+        flat = scores.reshape(-1).float()
+        if flat.numel() == 0:
+            return float("-inf")
+        if self.score_reduce == "top_r_mean":
+            k = min(self.top_r, flat.numel())
+            return float(torch.topk(flat, k=k, largest=True).values.mean().item())
+        if self.score_reduce == "head_mean_max" and scores.dim() == 4:
+            # Reduce single-head spikes by requiring a token to score well on
+            # average across attention heads.  This is useful at 128K where
+            # max-over-all-heads can over-rank unrelated chunks.
+            per_token = scores.float().mean(dim=1).reshape(-1)
+            return float(per_token.max().item()) if per_token.numel() else float("-inf")
+        if self.score_reduce == "head_mean_top_r_mean" and scores.dim() == 4:
+            per_token = scores.float().mean(dim=1).reshape(-1)
+            if per_token.numel() == 0:
+                return float("-inf")
+            k = min(self.top_r, per_token.numel())
+            return float(torch.topk(per_token, k=k, largest=True).values.mean().item())
+        if self.score_reduce == "z_score_max":
+            std = flat.std(unbiased=False)
+            if not torch.isfinite(std) or float(std.item()) <= 1.0e-6:
+                return float("-inf")
+            return float(((flat.max() - flat.mean()) / std).item())
+        if self.score_reduce == "peak_contrast":
+            k = min(max(2, self.top_r + 1), flat.numel())
+            vals = torch.topk(flat, k=k, largest=True).values
+            return float((vals[0] - vals[1:].mean()).item())
+        return float(flat.max().item())
+
+    @staticmethod
+    def _best_token_offset(scores: torch.Tensor) -> int:
+        token_scores = scores.float()
+        while token_scores.dim() > 1:
+            token_scores = token_scores.max(dim=0).values
+        if token_scores.numel() == 0:
+            return 0
+        return int(token_scores.argmax().item())
+
+    @staticmethod
+    def _token_dot_scores(query: torch.Tensor, key: torch.Tensor) -> torch.Tensor:
+        """Compute Q x K scores while respecting grouped-query attention heads."""
+        if query.dim() != 4 or key.dim() != 4:
+            return torch.matmul(query, key.transpose(-2, -1))
+
+        batch_q, q_heads, q_len, head_dim = query.shape
+        batch_k, kv_heads, kv_len, key_dim = key.shape
+        if batch_q != batch_k or head_dim != key_dim:
+            raise RuntimeError(
+                f"Q/K shape mismatch: query={tuple(query.shape)} key={tuple(key.shape)}"
+            )
+
+        if q_heads == kv_heads or q_heads == 1 or kv_heads == 1:
+            return torch.matmul(query, key.transpose(-2, -1))
+
+        if q_heads % kv_heads == 0:
+            groups = q_heads // kv_heads
+            grouped_q = query.reshape(batch_q, kv_heads, groups, q_len, head_dim)
+            grouped_scores = torch.einsum("bhgqd,bhkd->bhgqk", grouped_q, key)
+            return grouped_scores.reshape(batch_q, q_heads, q_len, kv_len)
+
+        if kv_heads % q_heads == 0:
+            groups = kv_heads // q_heads
+            grouped_key = key.reshape(batch_k, q_heads, groups, kv_len, key_dim).mean(dim=2)
+            return torch.matmul(query, grouped_key.transpose(-2, -1))
+
+        raise RuntimeError(
+            f"Unsupported GQA head layout: query_heads={q_heads}, kv_heads={kv_heads}"
+        )
+
+    @torch.no_grad()
+    def compute_dot_product_scores(
         self,
-        query_key: torch.Tensor,  # [batch, heads, 1, head_dim]
+        query_states: torch.Tensor,
         candidate_keys: List[str],
+        dram_table: Dict[str, Dict[str, torch.Tensor]],
+        compressor,
     ) -> Dict[str, float]:
-        """
-        计算 query K 与所有 candidate chunks 的余弦相似度。
-
-        Args:
-            query_key: 当前 query 的 K 张量
-            candidate_keys: 待评估的 DRAM chunk keys
-
-        Returns:
-            Dict: chunk_key -> similarity_score (0-1)
-        """
+        """Score chunks by dequantizing one candidate Key chunk at a time."""
         if not candidate_keys:
             return {}
 
-        # 计算 query 的平均 K（跨 batch 和 heads）
-        # query_key: [batch, heads, 1, head_dim]
-        mean_query_k = query_key.mean(dim=(0, 1))  # [1, head_dim]
+        q = query_states.detach().to(self.device, non_blocking=True).float()
+        if q.dim() == 3:
+            q = q.unsqueeze(2)
 
-        similarities = {}
+        scores: Dict[str, float] = {}
         for chunk_key in candidate_keys:
-            metadata = self.chunk_metadata.get(chunk_key)
-            if metadata is None:
+            entry = dram_table.get(chunk_key)
+            if entry is None:
                 continue
+            try:
+                q_k = entry["k_data"].to(self.device, non_blocking=True)
+                s_k = entry["k_scales"].to(self.device, non_blocking=True)
+                z_k = entry["k_zps"].to(self.device, non_blocking=True)
+                restored_k = compressor.decompress(
+                    q_k, s_k, z_k, target_dtype=torch.float16
+                ).float()
+                token_scores = self._token_dot_scores(q, restored_k)
+                scores[chunk_key] = self._reduce_token_scores(token_scores)
+                self.last_best_token_offsets[chunk_key] = self._best_token_offset(token_scores)
+                del q_k, s_k, z_k, restored_k, token_scores
+                if torch.cuda.is_available() and str(self.device).startswith("cuda"):
+                    torch.cuda.empty_cache()
+            except RuntimeError as exc:
+                if "out of memory" in str(exc).lower() and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print(f"  [DotProductRetrieval] failed scoring {chunk_key}: {exc}")
+            except Exception as exc:
+                print(f"  [DotProductRetrieval] failed scoring {chunk_key}: {exc}")
 
-            # 将 chunk embedding 移到 GPU 进行计算
-            chunk_emb = metadata.mean_k_embedding.to(self.device)
+        self.last_scores = scores
+        return scores
 
-            # 计算余弦相似度
-            # similarity = (query · chunk) / (||query|| * ||chunk||)
-            similarity = F.cosine_similarity(
-                mean_query_k,  # [1, head_dim]
-                chunk_emb.unsqueeze(0),  # [1, head_dim]
-                dim=-1,
-            ).item()
-
-            # Clamp 到 [0, 1]
-            similarities[chunk_key] = max(0.0, min(1.0, similarity))
-
-        return similarities
-
-    def rank_chunks(
+    def rank_chunks_by_scores(
         self,
-        query_key: torch.Tensor,
         candidate_keys: List[str],
+        dot_scores: Dict[str, float],
         top_k: Optional[int] = None,
     ) -> List[str]:
-        """
-        根据 query 相似度（或混合信号）对 chunks 排序。
-
-        Args:
-            query_key: 当前 query 的 K
-            candidate_keys: 候选 chunk keys
-            top_k: 返回前 k 个，None 返回全部
-
-        Returns:
-            List[str]: 排序后的 chunk keys
-        """
         if not candidate_keys:
             return []
 
-        # 计算语义相似度分数
-        semantic_scores = self.compute_query_similarities(query_key, candidate_keys)
-
-        # 获取历史注意力分数
-        historical_scores = {
-            key: self.chunk_metadata[key].historical_attention
-            for key in candidate_keys
-            if key in self.chunk_metadata
-        }
-
-        # 归一化历史分数到 [0, 1]
-        if historical_scores:
-            max_hist = max(historical_scores.values())
-            min_hist = min(historical_scores.values())
-            if max_hist > min_hist:
-                historical_scores = {
-                    key: (val - min_hist) / (max_hist - min_hist)
-                    for key, val in historical_scores.items()
-                }
-            else:
-                historical_scores = {key: 1.0 for key in historical_scores}
-
-        # 混合两种信号
-        combined_scores = {}
-        for key in candidate_keys:
-            semantic = semantic_scores.get(key, 0.0)
-            historical = historical_scores.get(key, 0.0)
-
-            # 加权组合
-            combined_scores[key] = (
-                self.alpha * semantic +
-                (1 - self.alpha) * historical
-            )
-
-        # 过滤低相似度 chunks
-        if self.min_similarity_threshold > 0:
-            combined_scores = {
-                key: score
-                for key, score in combined_scores.items()
-                if semantic_scores.get(key, 0.0) >= self.min_similarity_threshold
+        if self.alpha < 1.0:
+            hist = {
+                key: self.chunk_metadata.get(key, ChunkMetadata(key, 0, 0)).historical_attention
+                for key in candidate_keys
             }
+            if hist:
+                max_hist, min_hist = max(hist.values()), min(hist.values())
+                if max_hist > min_hist:
+                    hist = {k: (v - min_hist) / (max_hist - min_hist) for k, v in hist.items()}
+                else:
+                    hist = {k: 1.0 for k in hist}
+        else:
+            hist = {}
 
-        # 按分数排序
-        ranked = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
+        combined = {}
+        for key in candidate_keys:
+            dot = dot_scores.get(key, float("-inf"))
+            if dot == float("-inf"):
+                continue
+            combined[key] = self.alpha * dot + (1.0 - self.alpha) * hist.get(key, 0.0)
 
-        # 返回 top-k（或全部）
+        ranked = sorted(combined.items(), key=lambda item: item[1], reverse=True)
         if top_k is not None:
             ranked = ranked[:top_k]
-
         return [key for key, _ in ranked]
 
     def remove_chunk(self, chunk_key: str) -> None:
-        """删除一个 chunk 的元数据。"""
-        if chunk_key in self.chunk_metadata:
-            del self.chunk_metadata[chunk_key]
+        self.chunk_metadata.pop(chunk_key, None)
+        self.last_scores.pop(chunk_key, None)
+        self.last_best_token_offsets.pop(chunk_key, None)
 
     def clear_all(self) -> None:
-        """清空所有元数据。"""
         self.chunk_metadata.clear()
+        self.last_scores.clear()
+        self.last_best_token_offsets.clear()
 
-    def get_stats(self) -> Dict[str, any]:
-        """获取统计信息。"""
+    def get_stats(self) -> Dict[str, object]:
         return {
-            'total_chunks': len(self.chunk_metadata),
-            'device': self.device,
-            'alpha': self.alpha,
-            'min_similarity_threshold': self.min_similarity_threshold,
+            "total_chunks": len(self.chunk_metadata),
+            "device": self.device,
+            "alpha": self.alpha,
+            "score_reduce": self.score_reduce,
+            "top_r": self.top_r,
         }
 
 
 class HybridRetrievalStrategy:
-    """
-    混合检索策略：结合 Query-Aware 和历史注意力。
-
-    这是方案 D 的完整实现，可以独立启用或禁用。
-    """
+    """Compatibility facade for Method D retrieval."""
 
     def __init__(
         self,
-        device: str = 'cuda',
+        device: str = "cuda",
         enable: bool = True,
         alpha: float = 1.0,
         min_similarity_threshold: float = 0.0,
         fallback_to_method_c: bool = True,
+        score_reduce: str = "max",
+        top_r: int = 8,
     ):
-        """
-        Args:
-            device: 计算设备
-            enable: 是否启用 query-aware 检索
-            alpha: 语义相似度权重（1.0=纯方案D, 0.0=纯方案C）
-            min_similarity_threshold: 最低相似度阈值
-            fallback_to_method_c: 如果没有相似 chunks，fallback 到方案 C
-        """
         self.enable = enable
         self.fallback_to_method_c = fallback_to_method_c
-
         self.query_aware_retriever = QueryAwareRetriever(
             device=device,
             alpha=alpha,
             min_similarity_threshold=min_similarity_threshold,
+            score_reduce=score_reduce,
+            top_r=top_r,
         )
 
     def register_chunk(
@@ -273,17 +268,16 @@ class HybridRetrievalStrategy:
         chunk_key: str,
         start_pos: int,
         end_pos: int,
-        key_states: torch.Tensor,
+        key_states: Optional[torch.Tensor] = None,
         historical_attention: float = 0.0,
     ) -> None:
-        """注册一个 chunk（驱逐到 DRAM 时调用）。"""
         if self.enable:
             self.query_aware_retriever.register_chunk(
                 chunk_key=chunk_key,
                 start_pos=start_pos,
                 end_pos=end_pos,
-                key_states=key_states,
                 historical_attention=historical_attention,
+                key_states=key_states,
             )
 
     def retrieve_chunks(
@@ -292,71 +286,47 @@ class HybridRetrievalStrategy:
         candidate_keys: List[str],
         top_k: int,
         historical_scores: Optional[Dict[str, float]] = None,
+        dram_table: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        compressor=None,
     ) -> Tuple[List[str], str]:
-        """
-        检索 top-k 个最相关的 chunks。
-
-        Returns:
-            (selected_keys, method_used)
-            method_used: "method_d" (query-aware) 或 "method_c" (historical)
-        """
         if not self.enable or not candidate_keys:
-            # Fallback 到方案 C：按历史注意力排序
-            if historical_scores:
-                ranked = sorted(
-                    candidate_keys,
-                    key=lambda k: historical_scores.get(k, 0.0),
-                    reverse=True,
-                )
-                return ranked[:top_k], "method_c_fallback"
-            return candidate_keys[:top_k], "method_c_fallback"
+            return self._fallback(candidate_keys, top_k, historical_scores)
+        if dram_table is None or compressor is None:
+            if self.fallback_to_method_c:
+                return self._fallback(candidate_keys, top_k, historical_scores)
+            return [], "dot_product_missing_dram"
 
-        # 方案 D：query-aware 排序
-        ranked_by_query = self.query_aware_retriever.rank_chunks(
-            query_key=query_key,
+        dot_scores = self.query_aware_retriever.compute_dot_product_scores(
+            query_states=query_key,
             candidate_keys=candidate_keys,
+            dram_table=dram_table,
+            compressor=compressor,
+        )
+        ranked = self.query_aware_retriever.rank_chunks_by_scores(
+            candidate_keys=candidate_keys,
+            dot_scores=dot_scores,
             top_k=top_k,
         )
+        if not ranked and self.fallback_to_method_c:
+            return self._fallback(candidate_keys, top_k, historical_scores)
+        return ranked, "dot_product"
 
-        # 检查是否找到了足够的 chunks
-        if len(ranked_by_query) == 0 and self.fallback_to_method_c:
-            # 没有找到高相似度的 chunks，fallback 到方案 C
-            if historical_scores:
-                ranked = sorted(
-                    candidate_keys,
-                    key=lambda k: historical_scores.get(k, 0.0),
-                    reverse=True,
-                )
-                return ranked[:top_k], "method_c_fallback"
-
-        return ranked_by_query, "method_d"
+    def _fallback(
+        self,
+        candidate_keys: List[str],
+        top_k: int,
+        historical_scores: Optional[Dict[str, float]],
+    ) -> Tuple[List[str], str]:
+        if historical_scores:
+            ranked = sorted(candidate_keys, key=lambda k: historical_scores.get(k, 0.0), reverse=True)
+            return ranked[:top_k], "method_c_fallback"
+        return candidate_keys[:top_k], "method_c_fallback"
 
     def clear_all(self) -> None:
-        """清空所有元数据。"""
         self.query_aware_retriever.clear_all()
 
-    def get_stats(self) -> Dict[str, any]:
-        """获取统计信息。"""
+    def get_stats(self) -> Dict[str, object]:
         stats = self.query_aware_retriever.get_stats()
-        stats['enabled'] = self.enable
-        stats['fallback_to_method_c'] = self.fallback_to_method_c
+        stats["enabled"] = self.enable
+        stats["fallback_to_method_c"] = self.fallback_to_method_c
         return stats
-
-
-# 用于测试的简单示例
-if __name__ == "__main__":
-    print("Query-Aware Retriever (Method D)")
-    print("=" * 60)
-    print("独立实现，不影响现有架构")
-    print("通过配置开关启用/禁用")
-    print("自动 fallback 到方案 C")
-    print("\n核心假设:")
-    print("  - 当前 query K 与历史 chunk K 的相似度")
-    print("    可以预测该 chunk 会被 attend 到的程度")
-    print("\n预期优势:")
-    print("  - 对语义相关的 query 更准确")
-    print("  - 不依赖历史注意力模式")
-    print("\n潜在风险:")
-    print("  - 理论依据不扎实（需要实验验证）")
-    print("  - 多模态场景（VQA）效果不确定")
-    print("  - 增加 CPU-GPU 数据传输")
