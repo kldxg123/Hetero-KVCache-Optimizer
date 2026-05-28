@@ -28,28 +28,32 @@
     "Path A is retrieval scoring only; fused V weighting / fused attention output remains unimplemented and unclaimed.",
     "Latency remains much slower than the relaxed FullKV SDPA reference and was measured under shared-GPU contention, so Workflow3 is still blocked.",
     "Do not claim optional 0% boundary robustness: source-aware context=3 scored 0/2 at depth 0%, and Sink=512 also scored 0/2 at depth 0%.",
-    "Do not use answer-constrained max_new_tokens=16 as the primary latency claim; keep it separate from the 24-token open-ended NIAH result."
+    "Do not use answer-constrained max_new_tokens=16 as the primary latency claim; keep it separate from the 24-token open-ended NIAH result.",
+    "Deferred dequant is an incremental latency improvement, not enough for the <=2x FullKV SDPA latency target; Workflow3 remains blocked."
   ],
   "latest_success": {
-    "artifact": "experiments/niah_128k_sourceaware_context3_kvcache_maxnew16_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json",
-    "summary": "Answer-constrained source-aware context=3 K/V-cache diagnostic passed 128K seed6004 depth 25/50 at 4/4 with peak process memory about 21.1 GiB."
+    "artifact": "experiments/niah_128k_sourceaware_context3_deferred_seed6004_trials2_gpu2_20260528_wf2.json",
+    "summary": "Deferred dequant gate passed 128K seed6004 required-depth NIAH at 8/8 with peak process memory 21652 MiB and average decode about 559 ms/step."
   },
   "latest_failure": {
     "artifact": "experiments/niah_128k_sourceaware_context3_sink512_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json",
     "summary": "Increasing Sink from 64 to 512 did not fix optional depth 0%; optional 0% remains a mechanistic boundary weakness rather than a memory issue."
   },
-  "active_hypothesis": "The strongest main path remains source-aware cue focus plus token-level Method-D retrieval, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, and optional retrieve_focus_context_tokens=3. Do not prune top_k, qhist, or layers unless a new mechanism preserves quality. Workflow3 remains blocked by latency and optional 0% boundary robustness.",
+  "active_hypothesis": "The strongest main path is source-aware cue focus plus token-level Method-D retrieval, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, retrieve_focus_context_tokens=3, and deferred dequant gating. This preserves quality and slightly improves latency, but Workflow3 remains blocked by latency versus FullKV SDPA and optional 0% boundary robustness.",
   "next_experiment": {
-    "name": "implementation_level_latency_or_depth0_mechanism",
-    "purpose": "Continue Workflow2 with either implementation-level latency improvements that preserve the source-aware semantic path, or a targeted mechanism for optional depth 0% that does not expand HBM linearly.",
-    "safety": "Keep GPU own-process fuse at 30 GiB, use 22 GiB PyTorch cap, and separate diagnostic/oracle/answer-constrained results from main PyTorch dot-product results."
+    "name": "fair_latency_retest_or_next_deferred_optimization",
+    "purpose": "Retest deferred dequant on another seed or less-contended GPU, then look for further implementation-level latency reductions that preserve the same semantic signal.",
+    "safety": "Keep 22 GiB PyTorch cap and 30 GiB own-process fuse; do not run uncapped FullKV unless GPU is idle."
   },
-  "last_local_process_update": "Recorded Workflow2 round 20: semantic pruning failed, answer-constrained context=3 passed 4/4, no-context short-output failed 1/4, optional 0% remains blocked even with Sink=512.",
-  "round": 20,
+  "last_local_process_update": "Implemented and validated deferred dequant gating; 128K seed6004 all required depths passed 8/8 with stable memory and modest latency improvement.",
+  "round": 21,
   "known_facts": [
     "Strict no-fusion context=3 pruning ablations for TTL12, top_k=2, qhist=32, and layers4-27 all failed on seed6004 depth 25/50, usually by generating 000000; do not repeat these as main optimization paths.",
     "Source-aware context=3 with K/V cache and max_new_tokens=16 passed seed6004 depth 25/50 at 4/4 under the 22 GiB cap, but this is an answer-constrained latency diagnostic, not the 24-token main result.",
     "Source-aware no-context with max_new_tokens=16 scored 3/4, showing retrieve_focus_context_tokens=3 improves short-answer robustness.",
-    "Optional depth 99% passes under source-aware context=3, but optional depth 0% still fails even with Sink increased from 64 to 512."
+    "Optional depth 99% passes under source-aware context=3, but optional depth 0% still fails even with Sink increased from 64 to 512.",
+    "Deferred dequant gate is implemented: Method-D now scores/selects chunks and applies the HBM gate before materializing selected DRAM K/V, avoiding wasted dequantization when the gate rejects retrieval.",
+    "Deferred dequant passed Stage1 16/16, a 32K real-model smoke, and 128K seed6004 required-depth testing at 8/8 with peak process memory about 21.1 GiB.",
+    "Deferred dequant improved seed6004 full required-depth average decode from the previous context3 K/V-cache run around 597 ms/step to about 559 ms/step in a shared-GPU run."
   ]
 }

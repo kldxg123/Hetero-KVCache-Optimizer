@@ -1040,3 +1040,28 @@ Updated decisions:
 - Keep source-aware cue focus plus token-level dot-product retrieval as the quality path.
 - Treat `max_new_tokens=16` as an answer-constrained latency diagnostic only. The main open-ended NIAH result remains the 24-token setting.
 - Optional depth 0% is still blocked. Do not claim full boundary robustness across 0/99 until a mechanism specifically fixes 0%.
+
+
+## Workflow2 Round 21: Deferred Dequant Gate
+
+Implementation change:
+
+- Split Method-D retrieval into score/selection and materialization phases.
+- The decode path now computes token-level Query-Key chunk scores and runs the HBM gate before dequantizing selected DRAM K/V.
+- If the HBM gate rejects DRAM retrieval, selected chunks are logged but K/V tensors are not materialized, avoiding wasted dequantization and temporary HBM traffic.
+- The semantic path is unchanged: `top_k=4`, `query_history=64`, source-aware cue focus, TTL6 K/V reuse, and context=3 remain intact.
+
+Validation:
+
+| Test | Result | Decode | Peak process memory | Artifact |
+|---|---:|---:|---:|---|
+| Stage1 mechanism tests | `16/16` | n/a | CPU/unit | `tests/test_heterokv_stage1.py` |
+| 32K source-aware context3 smoke | `1/1` | `281.8 ms/step` | `21506 MiB` | `experiments/niah_32k_sourceaware_context3_deferred_smoke_seed6004_gpu2_20260528_wf2.json` |
+| 128K targeted seed6004 25/50 | `4/4` | `578.9 ms/step` | `21652 MiB` | `experiments/niah_128k_sourceaware_context3_deferred_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| 128K required seed6004 all depths | `8/8` | `559.1 ms/step` | `21652 MiB` | `experiments/niah_128k_sourceaware_context3_deferred_seed6004_trials2_gpu2_20260528_wf2.json` |
+
+Decision:
+
+- Promote deferred dequant gate as an implementation-level optimization because it preserves the accepted semantic configuration and passes real 128K required-depth testing.
+- This improves the current shared-GPU seed6004 full-depth decode average from the previous context3/KV-cache result (`~597 ms/step`) to `~559 ms/step`.
+- Latency is still far above the FullKV SDPA reference, so Workflow3 remains blocked.

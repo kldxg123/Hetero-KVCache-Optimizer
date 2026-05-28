@@ -1467,6 +1467,8 @@ class HeteroKVManager:
         layer_idx: int,
         query_key: torch.Tensor,
         top_k: Optional[int] = None,
+        score_only: bool = False,
+        use_last_selection: bool = False,
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], int, str]:
         """
         Method D: Query-aware DRAM chunk retrieval.
@@ -1490,8 +1492,9 @@ class HeteroKVManager:
             return None, None, 0, "disabled"
         self._last_retrieved_positions.pop(layer_idx, None)
         self._last_retrieved_focus_mask.pop(layer_idx, None)
-        self._last_method_d_selection.pop(layer_idx, None)
-        self._last_source_token_scores = {}
+        if not use_last_selection:
+            self._last_method_d_selection.pop(layer_idx, None)
+            self._last_source_token_scores = {}
 
         prefix = f"l{layer_idx}_"
         dram_keys = [k for k in self._dram.table.keys() if k.startswith(prefix)]
@@ -1508,7 +1511,25 @@ class HeteroKVManager:
 
         oracle_range = self._method_d_oracle_range
         reuse_hit = False
-        if oracle_range is not None:
+        if use_last_selection:
+            selection_items = list(self._last_method_d_selection.get(layer_idx, []))
+            selected_keys = [
+                str(item.get("chunk_key"))
+                for item in selection_items
+                if item.get("chunk_key") in dram_keys
+            ]
+            best_offsets = {
+                str(item.get("chunk_key")): int(item.get("best_token_offset", -1))
+                for item in selection_items
+                if item.get("chunk_key") in dram_keys
+            }
+            reuse_hit = any(bool(item.get("reuse_hit")) for item in selection_items)
+            method_base = (
+                str(selection_items[0].get("method_used", "method_d"))
+                if selection_items else "method_d"
+            )
+            method_used = f"{method_base}_materialize"
+        elif oracle_range is not None:
             oracle_start, oracle_end = oracle_range
             selected_keys = []
             best_offsets = {}
@@ -1691,12 +1712,18 @@ class HeteroKVManager:
                         0,
                     )
                 ),
+                "method_used": method_used,
             }
             for key in selected_keys
-        ]
+        ] if not use_last_selection else self._last_method_d_selection.get(layer_idx, [])
 
         if not selected_keys:
             return None, None, 0, method_used
+
+        if score_only:
+            for item in self._last_method_d_selection.get(layer_idx, []):
+                item["deferred_dequant"] = True
+            return None, None, len(selected_keys), method_used
 
         target_dtype = query_key.dtype if query_key.is_floating_point() else torch.bfloat16
         reuse_state = self._method_d_reuse_cache.get(layer_idx)

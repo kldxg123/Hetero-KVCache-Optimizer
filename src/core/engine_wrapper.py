@@ -351,10 +351,13 @@ class FusedHeteroCache(DynamicCache):
                 if query_states is None and layer_idx == 0:
                     print("  [Method D][WARN] query_states missing; falling back to key_states")
                 retrieval_query = self._method_d_update_query_history(layer_idx, query_k)
-                dram_k, dram_v, count, method_used = manager.decompress_dram_chunks_method_d(
-                    layer_idx, retrieval_query, top_k=self.method_d_top_k
+                _, _, selected_count, method_used = manager.decompress_dram_chunks_method_d(
+                    layer_idx,
+                    retrieval_query,
+                    top_k=self.method_d_top_k,
+                    score_only=True,
                 )
-                if dram_k is not None and count > 0:
+                if selected_count > 0:
                     use_retrieval, gate_info = self._method_d_gate_retrieval(
                         query_k, out_k, manager
                     )
@@ -363,8 +366,20 @@ class FusedHeteroCache(DynamicCache):
                         self._method_d_effective_source_fusion_alpha(selected_chunks)
                         if use_retrieval else 0.0
                     )
+                    dram_k, dram_v, count = None, None, 0
+                    if use_retrieval:
+                        dram_k, dram_v, count, method_used = manager.decompress_dram_chunks_method_d(
+                            layer_idx,
+                            retrieval_query,
+                            top_k=self.method_d_top_k,
+                            use_last_selection=True,
+                        )
+                        if dram_k is None or count <= 0:
+                            use_retrieval = False
+                            self._last_retrieved_source_fusion_alpha.pop(layer_idx, None)
                     if use_retrieval:
                         self._last_retrieved_source_fusion_alpha[layer_idx] = effective_alpha
+                    selected_chunks = manager.get_last_method_d_selection(layer_idx)
                     self._record_method_d_event(
                         layer_idx=layer_idx,
                         method_used=method_used,
@@ -374,6 +389,7 @@ class FusedHeteroCache(DynamicCache):
                         gate_info=gate_info,
                         query_history_len=retrieval_query.shape[-2],
                     )
+
                     if use_retrieval:
                         out_k = torch.cat([dram_k, out_k], dim=-2)
                         out_v = torch.cat([dram_v, out_v], dim=-2)
