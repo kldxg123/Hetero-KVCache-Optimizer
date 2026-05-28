@@ -1,6 +1,7 @@
 import os
 import sys
 
+import pytest
 import torch
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -8,7 +9,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.memory.manager import HeteroKVManager
-from src.memory.query_aware_retriever import HybridRetrievalStrategy
+from src.memory.query_aware_retriever import HybridRetrievalStrategy, QueryAwareRetriever
 from src.core.fused_attention_patch import heterokv_safe_attention_forward
 from src.quantization.kv_compressor import KVCompressor
 
@@ -312,6 +313,37 @@ def test_method_d_retrieval_preserves_query_dtype():
     assert dram_v.dtype == torch.bfloat16
 
 
+def test_method_d_reuse_ttl_reuses_decompressed_short_kv():
+    manager = HeteroKVManager(
+        num_layers=1,
+        sink_tokens=2,
+        hbm_budget_tokens=6,
+        device="cpu",
+        enable_quant=True,
+        enable_prefetch=False,
+        group_size=4,
+        enable_method_d=True,
+        method_d_reuse_ttl_tokens=2,
+        method_d_reuse_source_threshold=0.0,
+        method_d_reuse_kv_cache=True,
+        method_d_token_window=2,
+    )
+    k = torch.randn(1, 2, 8, 4, dtype=torch.bfloat16)
+    v = torch.randn(1, 2, 8, 4, dtype=torch.bfloat16)
+    manager.update(0, k, v, mode="prefill", seq_offset=0)
+
+    query = torch.randn(1, 2, 1, 4, dtype=torch.bfloat16)
+    k1, v1, count1, method1 = manager.decompress_dram_chunks_method_d(0, query, top_k=1)
+    k2, v2, count2, method2 = manager.decompress_dram_chunks_method_d(0, query, top_k=1)
+    selected = manager.get_last_method_d_selection(0)
+
+    assert count1 == count2
+    assert "kv_cache" in method2
+    assert selected[0]["retrieved_kv_cache_hit"] is True
+    assert torch.allclose(k1, k2)
+    assert torch.allclose(v1, v2)
+
+
 def test_short_kv_attention_extends_mask_for_retrieved_prefix():
     class DummyAttention:
         num_key_value_groups = 2
@@ -366,3 +398,145 @@ def test_source_fusion_can_route_retrieved_prefix_output():
     assert out.shape == (1, 1, 1, 2)
     assert weights.shape[-1] == 2
     assert torch.allclose(out[0, 0, 0], torch.tensor([10.0, 0.0]), atol=1e-5)
+
+
+def _require_triton_cuda_scoring():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is not available")
+    try:
+        from src.quantization.kernels.int4_dot_score import is_available
+    except Exception as exc:
+        pytest.skip(f"Triton scoring import failed: {exc}")
+    if not is_available():
+        pytest.skip("Triton scoring is not available")
+
+
+def test_triton_int4_score_matches_torch_dequant_reducer():
+    _require_triton_cuda_scoring()
+    from src.quantization.kernels.int4_dot_score import score_int4_key_chunk
+
+    torch.manual_seed(7)
+    compressor = KVCompressor(group_size=128, bits=4)
+    query = torch.randn(1, 4, 3, 128, device="cuda", dtype=torch.float16)
+    key = torch.randn(1, 2, 64, 128, device="cuda", dtype=torch.float16)
+    qk, sk, zk = compressor.compress(key)
+
+    fused = score_int4_key_chunk(
+        query.float(),
+        qk,
+        sk,
+        zk,
+        group_size=compressor.group_size,
+        score_reduce="query_top_r_mean",
+        top_r=2,
+    )
+
+    restored = compressor.decompress(qk, sk, zk, target_dtype=torch.float16).float()
+    token_scores = QueryAwareRetriever._token_dot_scores(query.float(), restored)
+    retriever = QueryAwareRetriever(
+        device="cuda",
+        score_reduce="query_top_r_mean",
+        top_r=2,
+    )
+    expected = retriever._reduce_token_scores(token_scores)
+    expected_offset = retriever._best_token_offset(token_scores)
+
+    assert fused["score"] == pytest.approx(expected, abs=1e-3, rel=1e-3)
+    assert fused["best_token_offset"] == expected_offset
+
+
+def test_triton_int4_batch_score_matches_torch_dequant_reducer():
+    _require_triton_cuda_scoring()
+    from src.quantization.kernels.int4_dot_score import score_int4_key_chunks_batch
+
+    torch.manual_seed(11)
+    compressor = KVCompressor(group_size=128, bits=4)
+    query = torch.randn(1, 4, 3, 128, device="cuda", dtype=torch.float16)
+    keys = [
+        torch.randn(1, 2, 64, 128, device="cuda", dtype=torch.float16)
+        for _ in range(3)
+    ]
+    packed = [compressor.compress(key) for key in keys]
+    qk = torch.stack([item[0] for item in packed], dim=0)
+    sk = torch.stack([item[1] for item in packed], dim=0)
+    zk = torch.stack([item[2] for item in packed], dim=0)
+
+    fused = score_int4_key_chunks_batch(
+        query.float(),
+        qk,
+        sk,
+        zk,
+        group_size=compressor.group_size,
+        score_reduce="query_top_r_mean",
+        top_r=2,
+    )
+
+    retriever = QueryAwareRetriever(
+        device="cuda",
+        score_reduce="query_top_r_mean",
+        top_r=2,
+    )
+    expected_scores = []
+    expected_offsets = []
+    for q_key, scales, zps in packed:
+        restored = compressor.decompress(q_key, scales, zps, target_dtype=torch.float16).float()
+        token_scores = QueryAwareRetriever._token_dot_scores(query.float(), restored)
+        expected_scores.append(retriever._reduce_token_scores(token_scores))
+        expected_offsets.append(retriever._best_token_offset(token_scores))
+
+    assert fused["scores"] == pytest.approx(expected_scores, abs=1e-3, rel=1e-3)
+    assert fused["best_token_offsets"] == expected_offsets
+
+
+def test_triton_int4_retrieval_hits_token_level_target():
+    _require_triton_cuda_scoring()
+    compressor = KVCompressor(group_size=128, bits=4)
+    target_k = torch.zeros(1, 2, 4, 128, device="cuda", dtype=torch.float16)
+    target_v = torch.randn(1, 2, 4, 128, device="cuda", dtype=torch.float16)
+    other_k = torch.zeros(1, 2, 4, 128, device="cuda", dtype=torch.float16)
+    other_v = torch.randn(1, 2, 4, 128, device="cuda", dtype=torch.float16)
+    query = torch.zeros(1, 4, 1, 128, device="cuda", dtype=torch.float16)
+
+    target_k[:, 1, 2, 0] = 8.0
+    query[:, 2, 0, 0] = 8.0
+    other_k[:, :, :, 1] = 1.0
+
+    def pack(k, v):
+        qk, sk, zk = compressor.compress(k)
+        qv, sv, zv = compressor.compress(v)
+        return {
+            "k_data": qk,
+            "k_scales": sk,
+            "k_zps": zk,
+            "v_data": qv,
+            "v_scales": sv,
+            "v_zps": zv,
+        }
+
+    dram_table = {
+        "l0_e0": pack(other_k, other_v),
+        "l0_e1": pack(target_k, target_v),
+    }
+    retriever = HybridRetrievalStrategy(
+        device="cuda",
+        enable=True,
+        alpha=1.0,
+        use_triton_scoring=True,
+        triton_scoring_batch_chunks=2,
+    )
+    retriever.register_chunk("l0_e0", 0, 4, historical_attention=0.0)
+    retriever.register_chunk("l0_e1", 4, 8, historical_attention=0.0)
+
+    selected, method = retriever.retrieve_chunks(
+        query_key=query,
+        candidate_keys=["l0_e0", "l0_e1"],
+        top_k=1,
+        dram_table=dram_table,
+        compressor=compressor,
+    )
+
+    qa = retriever.query_aware_retriever
+    assert method == "dot_product"
+    assert qa.last_scoring_backend == "triton_int4_batch"
+    assert selected == ["l0_e1"]
+    assert qa.last_best_token_offsets["l0_e1"] == 2

@@ -34,15 +34,97 @@ class QueryAwareRetriever:
         min_similarity_threshold: float = 0.0,
         score_reduce: str = "max",
         top_r: int = 8,
+        use_triton_scoring: bool = False,
+        triton_scoring_batch_chunks: int = 8,
     ):
         self.device = device
         self.alpha = alpha
         self.min_similarity_threshold = min_similarity_threshold
         self.score_reduce = score_reduce
         self.top_r = top_r
+        self.use_triton_scoring = bool(use_triton_scoring)
+        self.triton_scoring_batch_chunks = max(1, int(triton_scoring_batch_chunks))
         self.chunk_metadata: Dict[str, ChunkMetadata] = {}
         self.last_scores: Dict[str, float] = {}
         self.last_best_token_offsets: Dict[str, int] = {}
+        self.last_scoring_backend: str = "torch_dequant"
+        self._triton_disabled_reason: Optional[str] = None
+
+    def _compute_triton_batch_scores(
+        self,
+        q: torch.Tensor,
+        candidate_keys: List[str],
+        dram_table: Dict[str, Dict[str, torch.Tensor]],
+        compressor,
+    ) -> Dict[str, float]:
+        from src.quantization.kernels.int4_dot_score import score_int4_key_chunks_batch
+
+        scores: Dict[str, float] = {}
+        offsets: Dict[str, int] = {}
+        index = 0
+        while index < len(candidate_keys):
+            first_key = candidate_keys[index]
+            first_entry = dram_table.get(first_key)
+            if first_entry is None:
+                index += 1
+                continue
+            first_shape = tuple(first_entry["k_data"].shape)
+            first_scale_shape = tuple(first_entry["k_scales"].shape)
+            batch_keys: List[str] = []
+            batch_entries: List[Dict[str, torch.Tensor]] = []
+            while (
+                index < len(candidate_keys)
+                and len(batch_keys) < self.triton_scoring_batch_chunks
+            ):
+                key = candidate_keys[index]
+                entry = dram_table.get(key)
+                if (
+                    entry is not None
+                    and tuple(entry["k_data"].shape) == first_shape
+                    and tuple(entry["k_scales"].shape) == first_scale_shape
+                ):
+                    batch_keys.append(key)
+                    batch_entries.append(entry)
+                    index += 1
+                    continue
+                break
+
+            if not batch_keys:
+                index += 1
+                continue
+
+            q_k = torch.stack(
+                [entry["k_data"] for entry in batch_entries],
+                dim=0,
+            ).to(self.device, non_blocking=True)
+            s_k = torch.stack(
+                [entry["k_scales"] for entry in batch_entries],
+                dim=0,
+            ).to(self.device, non_blocking=True)
+            z_k = torch.stack(
+                [entry["k_zps"] for entry in batch_entries],
+                dim=0,
+            ).to(self.device, non_blocking=True)
+            fused = score_int4_key_chunks_batch(
+                q,
+                q_k,
+                s_k,
+                z_k,
+                group_size=getattr(compressor, "group_size", 128),
+                score_reduce=self.score_reduce,
+                top_r=self.top_r,
+            )
+            for key, score, offset in zip(
+                batch_keys,
+                fused["scores"],
+                fused["best_token_offsets"],
+            ):
+                scores[key] = float(score)
+                offsets[key] = int(offset)
+            del q_k, s_k, z_k
+
+        self.last_best_token_offsets = offsets
+        return scores
 
     def register_chunk(
         self,
@@ -158,6 +240,27 @@ class QueryAwareRetriever:
             q = q.unsqueeze(2)
 
         scores: Dict[str, float] = {}
+        self.last_best_token_offsets = {}
+        self.last_scoring_backend = "triton_int4" if self.use_triton_scoring else "torch_dequant"
+        if self.use_triton_scoring and q.is_cuda:
+            try:
+                scores = self._compute_triton_batch_scores(
+                    q=q,
+                    candidate_keys=candidate_keys,
+                    dram_table=dram_table,
+                    compressor=compressor,
+                )
+                self.last_scores = scores
+                self.last_scoring_backend = "triton_int4_batch"
+                return scores
+            except Exception as exc:
+                self._triton_disabled_reason = str(exc)
+                self.use_triton_scoring = False
+                self.last_scoring_backend = "torch_dequant_fallback"
+                print(
+                    "  [DotProductRetrieval] Triton batch scoring fallback: "
+                    f"{self._triton_disabled_reason}"
+                )
         for chunk_key in candidate_keys:
             entry = dram_table.get(chunk_key)
             if entry is None:
@@ -166,6 +269,33 @@ class QueryAwareRetriever:
                 q_k = entry["k_data"].to(self.device, non_blocking=True)
                 s_k = entry["k_scales"].to(self.device, non_blocking=True)
                 z_k = entry["k_zps"].to(self.device, non_blocking=True)
+                if self.use_triton_scoring and q.is_cuda:
+                    try:
+                        from src.quantization.kernels.int4_dot_score import score_int4_key_chunk
+
+                        fused = score_int4_key_chunk(
+                            q,
+                            q_k,
+                            s_k,
+                            z_k,
+                            group_size=getattr(compressor, "group_size", 128),
+                            score_reduce=self.score_reduce,
+                            top_r=self.top_r,
+                        )
+                        scores[chunk_key] = float(fused["score"])
+                        self.last_best_token_offsets[chunk_key] = int(
+                            fused["best_token_offset"]
+                        )
+                        del q_k, s_k, z_k
+                        continue
+                    except Exception as exc:
+                        self._triton_disabled_reason = str(exc)
+                        self.use_triton_scoring = False
+                        self.last_scoring_backend = "torch_dequant_fallback"
+                        print(
+                            "  [DotProductRetrieval] Triton scoring fallback: "
+                            f"{self._triton_disabled_reason}"
+                        )
                 restored_k = compressor.decompress(
                     q_k, s_k, z_k, target_dtype=torch.float16
                 ).float()
@@ -237,6 +367,10 @@ class QueryAwareRetriever:
             "alpha": self.alpha,
             "score_reduce": self.score_reduce,
             "top_r": self.top_r,
+            "use_triton_scoring": self.use_triton_scoring,
+            "triton_scoring_batch_chunks": self.triton_scoring_batch_chunks,
+            "last_scoring_backend": self.last_scoring_backend,
+            "triton_disabled_reason": self._triton_disabled_reason,
         }
 
 
@@ -252,6 +386,8 @@ class HybridRetrievalStrategy:
         fallback_to_method_c: bool = True,
         score_reduce: str = "max",
         top_r: int = 8,
+        use_triton_scoring: bool = False,
+        triton_scoring_batch_chunks: int = 8,
     ):
         self.enable = enable
         self.fallback_to_method_c = fallback_to_method_c
@@ -261,6 +397,8 @@ class HybridRetrievalStrategy:
             min_similarity_threshold=min_similarity_threshold,
             score_reduce=score_reduce,
             top_r=top_r,
+            use_triton_scoring=use_triton_scoring,
+            triton_scoring_batch_chunks=triton_scoring_batch_chunks,
         )
 
     def register_chunk(

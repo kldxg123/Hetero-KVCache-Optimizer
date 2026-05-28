@@ -528,6 +528,8 @@ def stage_niah(args) -> Dict[str, object]:
         str(args.niah_method_d_reuse_ttl_tokens),
         "--method-d-reuse-source-threshold",
         str(args.niah_method_d_reuse_source_threshold),
+        "--method-d-triton-scoring-batch-chunks",
+        str(args.niah_method_d_triton_scoring_batch_chunks),
         "--max-new-tokens",
         str(args.niah_max_new_tokens),
         "--heterokv-decode-suffix-tokens",
@@ -551,6 +553,10 @@ def stage_niah(args) -> Dict[str, object]:
         cmd.append("--method-d-source-fusion-focus-only")
     if args.niah_method_d_source_cue_focus:
         cmd.append("--method-d-source-cue-focus")
+    if args.niah_method_d_reuse_kv_cache:
+        cmd.append("--method-d-reuse-kv-cache")
+    if args.niah_method_d_triton_scoring:
+        cmd.append("--method-d-triton-scoring")
     if args.niah_no_attention_mask:
         cmd.append("--heterokv-no-attention-mask")
     if args.niah_diagnostic_bf16_dram:
@@ -753,6 +759,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--niah-method-d-source-cue-answer-tokens", type=int, default=8)
     parser.add_argument("--niah-method-d-reuse-ttl-tokens", type=int, default=0)
     parser.add_argument("--niah-method-d-reuse-source-threshold", type=float, default=0.0)
+    parser.add_argument("--niah-method-d-reuse-kv-cache", action="store_true")
+    parser.add_argument("--niah-method-d-triton-scoring", action="store_true")
+    parser.add_argument("--niah-method-d-triton-scoring-batch-chunks", type=int, default=8)
     parser.add_argument("--niah-no-attention-mask", action="store_true")
     parser.add_argument("--niah-diagnostic-bf16-dram", action="store_true")
     parser.add_argument("--niah-max-new-tokens", type=int, default=24)

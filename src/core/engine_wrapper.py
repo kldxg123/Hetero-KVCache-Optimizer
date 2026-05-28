@@ -83,6 +83,9 @@ class FusedHeteroCache(DynamicCache):
         method_d_source_cue_answer_tokens: int = 8,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
+        method_d_reuse_kv_cache: bool = False,
+        method_d_triton_scoring: bool = False,
+        method_d_triton_scoring_batch_chunks: int = 8,
         diagnostic_bf16_dram: bool = False,
     ):
         super().__init__()
@@ -135,6 +138,11 @@ class FusedHeteroCache(DynamicCache):
         self.method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
         self.method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self.method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
+        self.method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
+        self.method_d_triton_scoring = bool(method_d_triton_scoring)
+        self.method_d_triton_scoring_batch_chunks = max(
+            1, int(method_d_triton_scoring_batch_chunks)
+        )
         self.diagnostic_bf16_dram = bool(diagnostic_bf16_dram)
 
         # Deferred initialization: num_layers is set on first update
@@ -190,6 +198,9 @@ class FusedHeteroCache(DynamicCache):
             f"{f' focus_bias={self.method_d_focus_bias:.3f}' if self.method_d_focus_bias else ''}"
             f"{f' source_fusion={self.method_d_source_fusion_alpha:.3f}' if self.method_d_source_fusion_alpha else ''}"
             f"{f' reuse_ttl={self.method_d_reuse_ttl_tokens}' if self.method_d_reuse_ttl_tokens else ''}"
+            f"{' reuse_kv_cache=ON' if self.method_d_reuse_kv_cache else ''}"
+            f"{' triton_scoring=ON' if self.method_d_triton_scoring else ''}"
+            f"{f' triton_batch={self.method_d_triton_scoring_batch_chunks}' if self.method_d_triton_scoring else ''}"
         )
 
     def _ensure_manager(self, layer_idx: int) -> HeteroKVManager:
@@ -227,6 +238,11 @@ class FusedHeteroCache(DynamicCache):
             method_d_source_cue_answer_tokens=self.method_d_source_cue_answer_tokens,
             method_d_reuse_ttl_tokens=self.method_d_reuse_ttl_tokens,
             method_d_reuse_source_threshold=self.method_d_reuse_source_threshold,
+            method_d_reuse_kv_cache=self.method_d_reuse_kv_cache,
+            method_d_triton_scoring=self.method_d_triton_scoring,
+            method_d_triton_scoring_batch_chunks=(
+                self.method_d_triton_scoring_batch_chunks
+            ),
             diagnostic_bf16_dram=self.diagnostic_bf16_dram,
         )
         if self._source_token_ids is not None:
@@ -489,6 +505,13 @@ class FusedHeteroCache(DynamicCache):
             ),
             "reuse_ttl_tokens": int(self.method_d_reuse_ttl_tokens),
             "reuse_source_threshold": float(self.method_d_reuse_source_threshold),
+            "reuse_kv_cache": bool(self.method_d_reuse_kv_cache),
+            "triton_scoring": bool(self.method_d_triton_scoring),
+            "triton_scoring_batch_chunks": int(self.method_d_triton_scoring_batch_chunks),
+            "scoring_backend": (
+                selected_chunks[0].get("scoring_backend")
+                if selected_chunks else "unknown"
+            ),
         }
         self._method_d_events.append(event)
         if len(self._method_d_events) > 512:
@@ -960,6 +983,9 @@ def build_fused_cache(
     method_d_source_cue_answer_tokens: int = 8,
     method_d_reuse_ttl_tokens: int = 0,
     method_d_reuse_source_threshold: float = 0.0,
+    method_d_reuse_kv_cache: bool = False,
+    method_d_triton_scoring: bool = False,
+    method_d_triton_scoring_batch_chunks: int = 8,
     diagnostic_bf16_dram: bool = False,
 ) -> FusedHeteroCache:
     """
@@ -1013,5 +1039,8 @@ def build_fused_cache(
         method_d_source_cue_answer_tokens=method_d_source_cue_answer_tokens,
         method_d_reuse_ttl_tokens=method_d_reuse_ttl_tokens,
         method_d_reuse_source_threshold=method_d_reuse_source_threshold,
+        method_d_reuse_kv_cache=method_d_reuse_kv_cache,
+        method_d_triton_scoring=method_d_triton_scoring,
+        method_d_triton_scoring_batch_chunks=method_d_triton_scoring_batch_chunks,
         diagnostic_bf16_dram=diagnostic_bf16_dram,
     )

@@ -232,6 +232,9 @@ def build_heterokv_cache(model, args):
         method_d_nonfocus_penalty=args.method_d_nonfocus_penalty,
         method_d_source_fusion_alpha=args.method_d_source_fusion_alpha,
         method_d_source_fusion_focus_only=args.method_d_source_fusion_focus_only,
+        method_d_reuse_kv_cache=args.method_d_reuse_kv_cache,
+        method_d_triton_scoring=args.method_d_triton_scoring,
+        method_d_triton_scoring_batch_chunks=args.method_d_triton_scoring_batch_chunks,
     )
 
 
@@ -413,6 +416,9 @@ def main() -> int:
     parser.add_argument("--method-d-nonfocus-penalty", type=float, default=0.0)
     parser.add_argument("--method-d-source-fusion-alpha", type=float, default=0.0)
     parser.add_argument("--method-d-source-fusion-focus-only", action="store_true")
+    parser.add_argument("--method-d-reuse-kv-cache", action="store_true")
+    parser.add_argument("--method-d-triton-scoring", action="store_true")
+    parser.add_argument("--method-d-triton-scoring-batch-chunks", type=int, default=8)
     parser.add_argument("--output", default="experiments/ppl_eval.json")
     args = parser.parse_args()
 
@@ -488,6 +494,9 @@ def main() -> int:
             "nonfocus_penalty": args.method_d_nonfocus_penalty,
             "source_fusion_alpha": args.method_d_source_fusion_alpha,
             "source_fusion_focus_only": args.method_d_source_fusion_focus_only,
+            "reuse_kv_cache": args.method_d_reuse_kv_cache,
+            "triton_scoring": args.method_d_triton_scoring,
+            "triton_scoring_batch_chunks": args.method_d_triton_scoring_batch_chunks,
         },
         "modes": {},
     }

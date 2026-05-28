@@ -147,6 +147,9 @@ def build_cache(args, model, mode: str, needle_range=None):
         method_d_source_cue_answer_tokens=args.method_d_source_cue_answer_tokens,
         method_d_reuse_ttl_tokens=args.method_d_reuse_ttl_tokens,
         method_d_reuse_source_threshold=args.method_d_reuse_source_threshold,
+        method_d_reuse_kv_cache=args.method_d_reuse_kv_cache,
+        method_d_triton_scoring=args.method_d_triton_scoring,
+        method_d_triton_scoring_batch_chunks=args.method_d_triton_scoring_batch_chunks,
         diagnostic_bf16_dram=args.diagnostic_bf16_dram,
     )
     if mode == "heterokv_oracle_retrieval" and hasattr(cache, "set_method_d_oracle_range"):
@@ -570,6 +573,9 @@ def main():
     parser.add_argument("--method-d-source-cue-answer-tokens", type=int, default=8)
     parser.add_argument("--method-d-reuse-ttl-tokens", type=int, default=0)
     parser.add_argument("--method-d-reuse-source-threshold", type=float, default=0.0)
+    parser.add_argument("--method-d-reuse-kv-cache", action="store_true")
+    parser.add_argument("--method-d-triton-scoring", action="store_true")
+    parser.add_argument("--method-d-triton-scoring-batch-chunks", type=int, default=8)
     parser.add_argument("--diagnostic-bf16-dram", action="store_true")
     parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument(

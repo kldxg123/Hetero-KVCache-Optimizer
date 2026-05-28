@@ -75,6 +75,9 @@ class HeteroKVManager:
         method_d_source_cue_answer_tokens: int = 8,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
+        method_d_reuse_kv_cache: bool = False,
+        method_d_triton_scoring: bool = False,
+        method_d_triton_scoring_batch_chunks: int = 8,
         diagnostic_bf16_dram: bool = False,
     ):
         self.num_layers = num_layers
@@ -151,6 +154,11 @@ class HeteroKVManager:
         self._method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
         self._method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self._method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
+        self._method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
+        self._method_d_triton_scoring = bool(method_d_triton_scoring)
+        self._method_d_triton_scoring_batch_chunks = max(
+            1, int(method_d_triton_scoring_batch_chunks)
+        )
         self._method_d_reuse_cache: Dict[int, Dict[str, Any]] = {}
         self._method_d_range_votes: Dict[Tuple[int, int], int] = {}
         self._method_d_oracle_range: Optional[Tuple[int, int]] = None
@@ -165,8 +173,13 @@ class HeteroKVManager:
                 fallback_to_method_c=True,
                 score_reduce=method_d_score_reduce,
                 top_r=method_d_top_r,
+                use_triton_scoring=method_d_triton_scoring,
+                triton_scoring_batch_chunks=method_d_triton_scoring_batch_chunks,
             )
-            print(f"[Method D] Query-aware retrieval enabled | alpha={method_d_alpha}")
+            print(
+                f"[Method D] Query-aware retrieval enabled | alpha={method_d_alpha} "
+                f"triton_scoring={'ON' if method_d_triton_scoring else 'OFF'}"
+            )
 
         # Async prefetcher for DRAM -> HBM overlap
         self._prefetcher: Optional[AsyncPrefetcher] = None
@@ -1619,6 +1632,11 @@ class HeteroKVManager:
                 "score": float(self._last_retrieval_scores.get(key, float("nan"))),
                 "source_token_score": float(self._last_source_token_scores.get(key, 0.0)),
                 "best_token_offset": int(best_offsets.get(key, -1)),
+                "scoring_backend": getattr(
+                    self._method_d_retriever.query_aware_retriever,
+                    "last_scoring_backend",
+                    "unknown",
+                ),
                 "reuse_hit": bool(reuse_hit),
                 "reuse_ttl_remaining": int(
                     self._method_d_reuse_cache.get(layer_idx, {}).get("ttl_remaining", 0)
@@ -1636,9 +1654,26 @@ class HeteroKVManager:
         if not selected_keys:
             return None, None, 0, method_used
 
+        target_dtype = query_key.dtype if query_key.is_floating_point() else torch.bfloat16
+        reuse_state = self._method_d_reuse_cache.get(layer_idx)
+        if self._method_d_reuse_kv_cache and reuse_hit and reuse_state:
+            cached = reuse_state.get("retrieved_kv_cache")
+            if (
+                cached
+                and cached.get("selected_keys") == list(selected_keys)
+                and cached.get("dtype") == str(target_dtype)
+                and cached.get("device") == str(self.device)
+            ):
+                self._last_retrieved_positions[layer_idx] = cached["positions"]
+                if cached.get("focus_mask") is not None:
+                    self._last_retrieved_focus_mask[layer_idx] = cached["focus_mask"]
+                token_count = int(cached["k"].shape[-2])
+                for item in self._last_method_d_selection.get(layer_idx, []):
+                    item["retrieved_kv_cache_hit"] = True
+                return cached["k"], cached["v"], token_count, f"{method_used}_kv_cache"
+
         # Decompress selected chunks to BF16
         dram_k_parts, dram_v_parts, dram_pos_parts, dram_focus_parts = [], [], [], []
-        target_dtype = query_key.dtype if query_key.is_floating_point() else torch.bfloat16
         for chunk_key in selected_keys:
             entry = self._dram.retrieve(chunk_key)
             if entry is None:
@@ -1754,7 +1789,33 @@ class HeteroKVManager:
             self._last_retrieved_focus_mask[layer_idx] = torch.cat(
                 dram_focus_parts_sorted, dim=0
             )
+        else:
+            self._last_retrieved_focus_mask.pop(layer_idx, None)
         token_count = dram_k.shape[-2]
+
+        reuse_state = self._method_d_reuse_cache.get(layer_idx)
+        if (
+            self._method_d_reuse_kv_cache
+            and
+            reuse_state is not None
+            and self._method_d_reuse_ttl_tokens > 0
+            and selected_keys
+        ):
+            reuse_state["retrieved_kv_cache"] = {
+                "selected_keys": list(selected_keys),
+                "dtype": str(target_dtype),
+                "device": str(self.device),
+                "k": dram_k.detach(),
+                "v": dram_v.detach(),
+                "positions": self._last_retrieved_positions[layer_idx].detach(),
+                "focus_mask": self._last_retrieved_focus_mask.get(layer_idx),
+            }
+            if reuse_state["retrieved_kv_cache"]["focus_mask"] is not None:
+                reuse_state["retrieved_kv_cache"]["focus_mask"] = (
+                    reuse_state["retrieved_kv_cache"]["focus_mask"].detach()
+                )
+            for item in self._last_method_d_selection.get(layer_idx, []):
+                item["retrieved_kv_cache_hit"] = False
 
         spike_mb = dram_k.element_size() * dram_k.nelement() / 1024 / 1024
         spike_mb += dram_v.element_size() * dram_v.nelement() / 1024 / 1024

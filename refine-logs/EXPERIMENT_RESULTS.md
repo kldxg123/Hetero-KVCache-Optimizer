@@ -981,3 +981,112 @@ Summary:
 Updated required-depth NIAH total:
 
 - seeds `4242`, `6004`, and `7777`: `20/20` correct.
+
+## Workflow 2.0 Round 15 Update: Path A Triton Scoring
+
+Status: PATH A APPROVED AND PARTIALLY VALIDATED
+
+Implemented locally and synced to remote before the SSH interruption:
+
+- Optional Method-D `--method-d-triton-scoring` path.
+- Triton scoring operates on current uint8-backed INT4 K format and group-wise compressor scales/zps.
+- It fuses K dequantization and QK scoring for retrieval ranking only.
+- It does not fuse V weighting yet and does not claim fused attention.
+- It remains disabled unless explicitly requested.
+
+Stage1:
+
+- Remote `tests/test_heterokv_stage1.py`: `12 passed`.
+- Added CUDA/Triton tests comparing fused INT4 scoring against PyTorch dequant scoring.
+
+Microbench:
+
+| Test | PyTorch dequant scoring | Triton scoring | Result |
+| --- | ---: | ---: | --- |
+| Cold 32 chunks x 2K | `0.135 s`, `21.28 MiB` allocated | `0.673 s`, `9.30 MiB` allocated | Cold run slower due compile overhead |
+| Warm 64 chunks x 2K median | `0.0699 s`, `21.28 MiB` allocated | `0.0219 s`, `9.30 MiB` allocated | `3.19x` faster, top-k equal |
+
+Artifacts:
+
+- `experiments/triton_scoring_microbench_20260528_102132.json`
+- `experiments/triton_scoring_microbench_warm_20260528_102215.json`
+
+Real-model smoke:
+
+- 32K NIAH, seed `6004`, depth `50%`, one trial.
+- Result: `1/1` correct.
+- `max_allocated=18.31 GiB`, `max_reserved=20.65 GiB`.
+- Method-D event backends: `triton_int4`.
+- Artifact: `experiments/niah_32k_triton_scoring_smoke_20260528.json`.
+
+128K probe:
+
+- Started 128K seed `6004`, depth `50%`, one trial, 22 GiB cap, external 30 GiB nvidia-smi fuse.
+- Monitor showed the experiment process stable around `21656 MiB`, never above 30 GiB.
+- The run did not complete before the SSH session/port became unavailable, so this is not an accepted result.
+- Because the remote SSH port became unreachable, process cleanup and artifact inspection are pending reconnection.
+
+Next local optimization before retry:
+
+- Add batched Triton scoring over multiple same-shaped candidate chunks per launch.
+- This keeps quantized K staging bounded by `triton_scoring_batch_chunks`; it still avoids full FP16 K materialization.
+- Goal: reduce Python/kernel-launch overhead in real 128K decode while preserving exact top-k behavior.
+
+### Round 15 Follow-Up: No-Pipe Monitor Fix And Failed Optimization Branches
+
+Important testing-method correction:
+
+- The first monitored 128K Path-A runs used `subprocess.PIPE` without consuming stdout during execution.
+- Method-D mechanism logs filled the pipe and stalled the child process.
+- This caused false 25-minute timeouts.
+- Correct monitor method: write stdout/stderr to a log file, or actively drain the pipe while monitoring.
+
+Validated with no-pipe monitor:
+
+| Run | Result | Peak process memory | Artifact |
+| --- | ---: | ---: | --- |
+| 128K seed6004 depth50, Triton batched + K/V reuse | `1/1` | `21662 MiB` | `experiments/niah_128k_triton_batched_kvreuse_depth50_seed6004_nopipe_20260528_131626.json` |
+
+Latency breakdown for that single-depth run:
+
+- total `96.22s`
+- prefill `78.30s`
+- decode `17.92s`
+- decode `716.7 ms/step`
+- backend `triton_int4_batch`
+- `kv_cache_events=343`
+
+Failed branch: batched Triton scoring as main path.
+
+| Run | Accuracy | Artifact |
+| --- | ---: | --- |
+| 128K required depths, Triton batched + K/V reuse | `2/4` | `experiments/niah_128k_required_depths_triton_batched_kvreuse_seed6004_20260528_131911.json` |
+| same, with FP16 dequant rounding in Triton | `2/4` | `experiments/niah_128k_required_depths_triton_batched_kvreuse_fp16round_seed6004_20260528_132800.json` |
+
+Failed branch: retrieved K/V cache reuse.
+
+- Retrieved K/V cache reuse was added as an optional optimization.
+- It reuses already decompressed short retrieved windows during selected-key TTL reuse.
+- It is now behind `method_d_reuse_kv_cache` and defaults to off.
+- Required-depth 128K with this optimization was `2/4`, so it is not part of the accepted main path.
+
+New robustness probe:
+
+| Run | Accuracy | Notes | Artifact |
+| --- | ---: | --- | --- |
+| PyTorch main path after disabling K/V cache, seed6004 one trial per required depth | `2/4` | New code-depth pairing exposed failures at 50% and 90% | `experiments/niah_128k_required_depths_torch_main_after_kvcache_flag_seed6004_20260528_134430.json` |
+| same full depth order with source fusion alpha `0.85` | `2/4` | Stronger fusion did not fix failed code-depth cases | `experiments/niah_128k_required_depths_alpha085_seed6004_20260528_135559.json` |
+
+Failure analysis:
+
+- Failed samples still retrieve the needle-containing chunk many times.
+- Example failed 50% case: needle `[65524,65530]`, overlap events `421/512`, source cue focus retrieved `[65510,65574]`.
+- Example failed 90% case: needle `[117918,117924]`, overlap events `461/512`, source cue focus retrieved `[117904,117968]`.
+- Therefore the blocker is no longer chunk discovery. It is answer-span fusion / final generation fidelity after the correct source is present.
+
+Current scientific status:
+
+- Memory survival under the 22 GiB cap remains strong.
+- Existing accepted 20/20 NIAH result remains a real result for those seeds/code-depth pairings.
+- The new one-trial seed6004 pairing shows the NIAH claim is not yet paper-grade robust.
+- Workflow3 should remain blocked.

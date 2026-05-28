@@ -1,5 +1,5 @@
 {
-  "current_round": 14,
+  "current_round": 16,
   "workflow": "workflow2",
   "workflow3_ready": false,
   "accepted_claims": [
@@ -9,28 +9,33 @@
     "Cue-focus alpha0.65 with Method-D token-level dot-product retrieval passed 128K required-depth NIAH on seeds 4242 and 6004: 16/16.",
     "Source-aware Method-D reuse TTL plus token_window=64 passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, while reducing decode latency to roughly 520-563 ms/token.",
     "A real 8K WikiText-2 PPL suffix run passed the <=5% degradation target: FullKV PPL 7.2859 vs HeteroKV PPL 7.5443, +3.55%.",
-    "A real 10K WikiText-2 PPL suffix run also passed: FullKV PPL 4.9011 vs HeteroKV PPL 4.9046, +0.07%, with process peak about 22.6 GiB."
+    "A real 10K WikiText-2 PPL suffix run also passed: FullKV PPL 4.9011 vs HeteroKV PPL 4.9046, +0.07%, with process peak about 22.6 GiB.",
+    "Path A Triton retrieval scoring is approved and partially validated at the mechanism level: Stage1 passes, warm microbench matched PyTorch top-k after the batched reducer fix, and a 32K real-model NIAH smoke passed with triton_int4_batch backend logs.",
+    "The GPU monitor harness was corrected: long Method-D runs must redirect stdout/stderr to a file or actively drain pipes, otherwise mechanism logs can fill an unconsumed pipe and falsely stall the child process."
   ],
   "blocked_claims": [
     "Workflow3 / paper-writing is not ready: latency remains far above a <=2x FullKV SDPA decode baseline.",
     "Optional 0% NIAH boundary still fails under the main configuration and under the source-before-min diagnostic branch; do not claim full boundary robustness.",
     "The PPL evidence is real and now includes 8K and 10K suffix evaluations, but it is still not a broad 128K language-modeling suite.",
     "A100-under-22GiB evidence supports a 4090-like memory-envelope survival claim, but not true 4090 latency.",
-    "Triton/CUDA fused retrieval attention remains unapproved and unused."
+    "Path A is not an accepted main path: 128K required-depth accuracy was 2/4 even after FP16 dequant rounding in the Triton kernel.",
+    "Retrieved K/V cache reuse is not accepted as a default optimization: it improved a 32K smoke runtime but 128K required-depth accuracy was 2/4, so it is now behind method_d_reuse_kv_cache and defaults off.",
+    "A new seed6004 one-trial required-depth pairing exposed a main-path robustness gap: PyTorch scoring with selected-key reuse found the needle chunk but still scored only 2/4.",
+    "Path A is retrieval scoring only; fused V weighting / fused attention output remains unimplemented and unclaimed."
   ],
   "latest_success": {
-    "artifact": "experiments/niah_128k_required_depths_cuefocus_alpha065_reuse_ttl6_win64_thr35_seed7777_20260528_171805.json",
-    "summary": "Blind seed7777 required-depth 128K NIAH passed 4/4, average decode 530.2 ms/token, max_reserved 20.65 GiB."
+    "artifact": "experiments/niah_128k_triton_batched_kvreuse_depth50_seed6004_nopipe_20260528_131626.json",
+    "summary": "No-pipe monitored 128K Path-A single-depth run passed 1/1 under a 21662 MiB process peak; decode was about 716.7 ms/step."
   },
   "latest_failure": {
-    "artifact": "experiments/niah_128k_optional_depths_source_cue_score_reuse_ttl6_win64_seed4242_20260528_165749.json",
-    "summary": "Optional 0% still failed 0/2; optional 99% passed 2/2. Source-cue-score diagnostic did not bring early chunks into the selected path and was slower."
+    "artifact": "experiments/niah_128k_required_depths_torch_main_after_kvcache_flag_seed6004_20260528_134430.json",
+    "summary": "New seed6004 one-trial required-depth pairing failed 2/4 even with PyTorch scoring; analysis shows the needle chunk was retrieved, so the blocker is answer-span fusion/generation fidelity."
   },
-  "active_hypothesis": "The strongest current main path is source-aware cue focus plus token-level Method-D retrieval, with reuse TTL6 and token_window64 as a latency-reduction layer. The mechanism is credible for required 25/50/75/90 NIAH across 20/20 cases and 8K/10K PPL, but needs either deeper latency optimization or explicit Triton permission before a <=2x claim is possible.",
+  "active_hypothesis": "The strongest PyTorch main path remains source-aware cue focus plus token-level Method-D retrieval with selected-key reuse TTL6 and token_window64, but new randomized code-depth pairings show that retrieval recall is ahead of final answer fidelity. The next useful optimization is answer-span-only fusion or a stricter attention-time source suppressor, not more retrieval scoring speed work.",
   "next_experiment": {
-    "name": "latency_breakdown_or_triton_decision",
-    "purpose": "Decide whether further pure PyTorch optimization is meaningful; current PyTorch path is still far above the FullKV SDPA decode baseline despite TTL reuse.",
-    "safety": "Continue using available GPUs only when estimated own memory remains below 30 GiB and total GPU memory remains safe for other users."
+    "name": "answer_span_only_fusion",
+    "purpose": "Use the already-retrieved source-cue answer span more faithfully while suppressing surrounding retrieved/filler tokens; keep oracle/diagnostic and real main-path results separate.",
+    "safety": "Continue using no-pipe monitoring for long GPU runs; keep the 30 GiB own-process fuse; avoid 128K full sweeps until a small failure-depth probe passes."
   },
-  "last_local_process_update": "Workflow2 added Method-D source-aware reuse TTL and token-window64. Required-depth 128K NIAH is now 20/20 across seeds 4242, 6004, and 7777; PPL 8K is within +3.55% and PPL 10K within +0.07%; optional 0% and latency remain blockers."
+  "last_local_process_update": "Workflow2 found and fixed a monitor harness bug, validated Path A as a mechanism branch, rejected Triton scoring and retrieved-K/V-cache reuse as default main-path optimizations, and identified answer-span fusion/generation fidelity as the current blocker. Workflow3 remains blocked."
 }

@@ -728,3 +728,128 @@ Current ranked ideas:
 | 3 | Optional 0% prefix-boundary handling | Fix documented boundary weakness without harming required depths | Candidate |
 | 4 | Larger multi-seed NIAH table | Move from strong prototype evidence to paper-grade statistics | Candidate |
 | 5 | Triton/CUDA fused dequant attention | Only after quality/PPL claims are stable and user approves | Defer |
+
+## Workflow 2.0 Round 15 Idea Outcomes
+
+### Adopted: Path A Triton INT4 Retrieval Scoring
+
+Permission:
+
+- User approved Path A.
+- Scope remains retrieval scoring only, not fused attention output.
+
+Method:
+
+- Add an optional Triton kernel for Method-D scoring.
+- Dequantize uint8-backed INT4 K inside the kernel using the existing group-wise scale/zp format.
+- Compute token-level `Q x K` block scores and best-token offsets.
+- Do not materialize full FP16/BF16 K.
+- Do not fuse V weighting in this step.
+- Keep PyTorch dequant scoring as the fallback and as the reference path.
+
+Evidence so far:
+
+- Stage1 remote tests: `12 passed`.
+- Warm microbench: top-k equal to PyTorch, best offsets equal, median speedup `3.19x`, allocated memory reduced from `21.28 MiB` to `9.30 MiB`.
+- 32K real Qwen2.5-7B NIAH smoke passed `1/1`; Method-D event backend was `triton_int4`; max reserved stayed `20.65 GiB`.
+
+Failed/Inconclusive:
+
+- 128K one-depth Path-A probe stayed under the 30 GiB process fuse, but did not return before SSH port `2222` became unreachable.
+- This is not counted as an accepted 128K Path-A result.
+- It exposed a likely risk: per-chunk Triton launch overhead may still be too high in full 128K decode.
+
+### Adopted Next: Batched Triton Scoring
+
+Idea:
+
+- Instead of one Triton scoring launch per DRAM chunk, stage several same-shaped quantized chunks and score them in one launch grid.
+- Control staging with `triton_scoring_batch_chunks`.
+
+Why it should help:
+
+- It reduces Python loop and kernel launch overhead.
+- It still does not allocate full FP16 K.
+- Quantized staging is bounded and small compared with the 30 GiB safety fuse.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Batched Triton INT4 scoring | Reduce Method-D retrieval launch overhead without changing semantics | Implemented locally, pending remote sync/test |
+| 2 | 128K Path-A single-depth retry | Verify quality, backend logs, and latency after batched scoring | Next when SSH returns |
+| 3 | Required-depth 128K Path-A regression | Ensure Triton path does not regress the 20/20 PyTorch main result | After single-depth pass |
+| 4 | Optional 0% prefix-boundary design | Fix known boundary failure separately from Path A | Candidate |
+| 5 | Broader PPL suite | Strengthen semantic-loss evidence | Candidate after latency path stabilizes |
+
+## Workflow 2.0 Round 16 Idea Outcomes
+
+### Corrected Testing Method: No-Pipe GPU Monitor
+
+Finding:
+
+- Long 128K Method-D runs produce enough mechanism logs to fill an unconsumed stdout pipe.
+- A monitor wrapper that uses `stdout=PIPE` but only calls `communicate()` after process exit can falsely stall the experiment.
+
+Decision:
+
+- Use log-file stdout/stderr redirection or an actively drained pipe for monitored GPU runs.
+- Treat the earlier 25-minute Path-A timeouts as invalid harness failures, not model/runtime failures.
+
+### Failed: Batched Triton Scoring As Main Path
+
+What worked:
+
+- Stage1 passed.
+- Microbench top-k matched PyTorch after fixing the batched reducer.
+- Single-depth 128K ran to completion under the 30 GiB process fuse.
+
+What failed:
+
+- Required-depth 128K with `triton_int4_batch` scored only `2/4`.
+- Adding FP16 dequant rounding inside the Triton kernel did not restore quality.
+
+Decision:
+
+- Keep Triton scoring as an experimental branch.
+- Do not use it for the main semantic claim.
+
+### Failed: Retrieved K/V Cache Reuse As Default
+
+Idea:
+
+- Reuse decompressed short retrieved K/V windows across selected-key TTL hits.
+
+Result:
+
+- 32K smoke improved from `35.7s` to `18.7s`.
+- 128K required-depth quality fell to `2/4`.
+
+Decision:
+
+- Keep the feature behind `method_d_reuse_kv_cache`.
+- Default remains off.
+- Record it as a speed-quality tradeoff, not an accepted optimization.
+
+### New Robustness Gap: Correct Chunk Found, Answer Not Reliably Generated
+
+Finding:
+
+- In new seed6004 one-trial required-depth pairings, failures at 50% and 90% still retrieved the needle-containing chunk in most Method-D events.
+- Source cue focus covered the answer span.
+- The generated text contained partial digits but not the exact code.
+
+Interpretation:
+
+- The remaining blocker is not retrieval recall.
+- It is final answer-span attention fusion / decoding fidelity after the correct source is available.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Answer-span-only source fusion | Attend only answer tokens after source cue, not the surrounding 64-token window | Next |
+| 2 | Source-aware false-positive suppressor at attention time | Reduce non-source retrieved chunk influence once source-cue chunk is found | Candidate |
+| 3 | Decode-time extraction head / constrained answer span probe | Diagnostic only: separate cache quality from free-form generation drift | Candidate |
+| 4 | Broader randomized 128K NIAH table | Measure robustness honestly after each fix | Required before Workflow3 |
+| 5 | Triton scoring | Keep experimental until semantic parity is restored | Defer |
