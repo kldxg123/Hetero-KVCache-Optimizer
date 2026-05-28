@@ -1255,3 +1255,52 @@ Workflow status:
 - PPL: refreshed and within budget on the 10K suffix sample.
 - Memory: stable under the 22 GiB cap and 30 GiB process fuse.
 - Latency: still the main blocker for Workflow3.
+
+
+## Workflow2 Round 20 Results
+
+### Strict no-fusion latency-pruning ablations
+
+All four pruning attempts on the strict/no-fusion context=3 branch failed on seed6004 depth 25/50, 2 trials each:
+
+| Ablation | Accuracy | Failure signature | Peak process memory |
+| --- | ---: | --- | ---: |
+| reuse TTL12 | `0/4` | generated `000000` | `21652 MiB` |
+| top_k=2 | `0/4` | generated `000000` | `21652 MiB` |
+| qhist=32 | `0/4` | generated `000000` | `21508 MiB` |
+| layers 4-27 | `0/4` | generated `000000` | `21652 MiB` |
+
+Interpretation: these are useful failed ideas, but they were run on the strict/no-fusion diagnostic branch. They should not be confused with the accepted source-aware alpha=0.65 path.
+
+### Answer-constrained source-aware diagnostic
+
+Artifact: `experiments/niah_128k_sourceaware_context3_kvcache_maxnew16_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json`
+
+Result: `4/4` on depth 25/50, 2 trials each, under the 22 GiB cap and 30 GiB process fuse.
+
+- Decode steps: `17` per trial.
+- Average decode: `788.9 ms/step` in this shared-GPU run.
+- Peak process memory: `21652 MiB`.
+- This is a diagnostic for answer-constrained NIAH latency, not a replacement for the main 24-token open-ended setting.
+
+Artifact: `experiments/niah_128k_sourceaware_nocontext_kvcache_maxnew16_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json`
+
+Result: `3/4`. The failed 50% trial shows that `retrieve_focus_context_tokens=3` improves short-answer robustness.
+
+### Optional boundary check
+
+Artifact: `experiments/niah_128k_sourceaware_context3_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json`
+
+Result: `2/4`.
+
+- Depth 99%: `2/2`.
+- Depth 0%: `0/2`, generated `000000`.
+
+Artifact: `experiments/niah_128k_sourceaware_context3_sink512_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json`
+
+Result: `2/4`.
+
+- Increasing sink from 64 to 512 did not fix depth 0%.
+- Peak process memory only increased to about `21532 MiB`, so the failure is semantic/mechanistic rather than memory-related.
+
+Current blocker remains latency and optional depth 0% robustness; Workflow3 is not ready.

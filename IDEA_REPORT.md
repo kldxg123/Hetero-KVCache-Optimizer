@@ -1017,3 +1017,26 @@ Current ranked ideas:
 | 3 | Optional boundary 0% design | Expand claim scope beyond required depths | Candidate |
 | 4 | Larger/longer PPL suite | Strengthen semantic-loss evidence | Candidate |
 | 5 | Fused dequant/value weighting | Attack latency if quality remains stable | Requires separate permission |
+
+
+## Workflow2 Round 20: Source-Aware Latency And Boundary Checks
+
+New evidence after the context=3 K/V-cache checkpoint:
+
+| Idea | Configuration | Result | Decision | Artifact |
+|---|---|---:|---|---|
+| TTL12 reuse on strict no-fusion ablation | gate=3.5, no source-aware fusion, context=3, K/V cache | `0/4` | Failed diagnostic; not the main source-aware path | `experiments/niah_128k_context3_kvcache_ttl12_seed6004_depth25_50_trials2_gpu2_20260528_wf2c.json` |
+| top_k=2 on strict no-fusion ablation | gate=3.5, context=3, K/V cache | `0/4` | Failed; reducing evidence width collapses to `000000` | `experiments/niah_128k_context3_kvcache_top2_ttl6_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| qhist=32 on strict no-fusion ablation | gate=3.5, context=3, K/V cache | `0/4` | Failed; query history length is quality-critical | `experiments/niah_128k_context3_kvcache_qhist32_ttl6_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| layers 4-27 only on strict no-fusion ablation | gate=3.5, context=3, K/V cache | `0/4` | Failed; skipping early layers removes useful signal | `experiments/niah_128k_context3_kvcache_layers4_27_ttl6_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| answer-constrained source-aware context=3 | max_new_tokens=16, source-aware alpha=0.65, context=3, K/V cache | `4/4` | Useful latency diagnostic; not a replacement for 24-token main result | `experiments/niah_128k_sourceaware_context3_kvcache_maxnew16_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| answer-constrained source-aware no-context | max_new_tokens=16, source-aware alpha=0.65, context=0, K/V cache | `3/4` | Context=3 is useful for short-output robustness | `experiments/niah_128k_sourceaware_nocontext_kvcache_maxnew16_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| optional boundary 0/99 with context=3 | source-aware alpha=0.65, context=3, K/V cache | `2/4` | 99% passes; 0% remains a boundary weakness | `experiments/niah_128k_sourceaware_context3_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json` |
+| optional boundary with Sink=512 | source-aware alpha=0.65, context=3, sink=512 | `2/4` | Failed to fix 0%; larger sink alone is not enough | `experiments/niah_128k_sourceaware_context3_sink512_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json` |
+
+Updated decisions:
+
+- Do not pursue semantic-signal pruning (`top_k=2`, `qhist=32`, `layers4-27`) as a main optimization; each collapsed to `000000` in the strict ablation.
+- Keep source-aware cue focus plus token-level dot-product retrieval as the quality path.
+- Treat `max_new_tokens=16` as an answer-constrained latency diagnostic only. The main open-ended NIAH result remains the 24-token setting.
+- Optional depth 0% is still blocked. Do not claim full boundary robustness across 0/99 until a mechanism specifically fixes 0%.

@@ -26,21 +26,30 @@
     "Retrieved K/V cache reuse is not accepted as a default optimization: it improved a 32K smoke runtime but 128K required-depth accuracy was 2/4, so it is now behind method_d_reuse_kv_cache and defaults off.",
     "A new seed6004 one-trial required-depth pairing exposed a main-path robustness gap: PyTorch scoring with selected-key reuse found the needle chunk but still scored only 2/4.",
     "Path A is retrieval scoring only; fused V weighting / fused attention output remains unimplemented and unclaimed.",
-    "Latency remains much slower than the relaxed FullKV SDPA reference and was measured under shared-GPU contention, so Workflow3 is still blocked."
+    "Latency remains much slower than the relaxed FullKV SDPA reference and was measured under shared-GPU contention, so Workflow3 is still blocked.",
+    "Do not claim optional 0% boundary robustness: source-aware context=3 scored 0/2 at depth 0%, and Sink=512 also scored 0/2 at depth 0%.",
+    "Do not use answer-constrained max_new_tokens=16 as the primary latency claim; keep it separate from the 24-token open-ended NIAH result."
   ],
   "latest_success": {
-    "artifact": "experiments/niah_128k_context3_kvcache_seed7777_trial1_gpu2_20260528_181316.json",
-    "summary": "Context=3 plus retrieved K/V cache reuse completed the third-seed 128K required-depth check, giving 20/20 across seeds 4242, 6004, and 7777 with stable memory."
+    "artifact": "experiments/niah_128k_sourceaware_context3_kvcache_maxnew16_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json",
+    "summary": "Answer-constrained source-aware context=3 K/V-cache diagnostic passed 128K seed6004 depth 25/50 at 4/4 with peak process memory about 21.1 GiB."
   },
   "latest_failure": {
-    "artifact": "experiments/niah_128k_required_focus_only_ttl_seed6004_trials2_20260528_workflow2.json",
-    "summary": "Pure answer-span physical retrieval with context=0 scored 7/8 on seed6004 broader required-depth testing, motivating cue-context retrieval."
+    "artifact": "experiments/niah_128k_sourceaware_context3_sink512_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json",
+    "summary": "Increasing Sink from 64 to 512 did not fix optional depth 0%; optional 0% remains a mechanistic boundary weakness rather than a memory issue."
   },
-  "active_hypothesis": "The strongest current candidate is source-aware cue focus plus token-level Method-D retrieval, selected-key reuse TTL6, token_window64, source-cue focus-only physical retrieval, retrieve_focus_context_tokens=3, and opt-in retrieved K/V cache reuse. It fixes the answer-generation failure class while improving decode latency, but the <=2x latency claim is still blocked.",
+  "active_hypothesis": "The strongest main path remains source-aware cue focus plus token-level Method-D retrieval, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, and optional retrieve_focus_context_tokens=3. Do not prune top_k, qhist, or layers unless a new mechanism preserves quality. Workflow3 remains blocked by latency and optional 0% boundary robustness.",
   "next_experiment": {
-    "name": "fair_latency_or_next_latency_optimization",
-    "purpose": "Obtain a fairer same-GPU latency comparison for context=3 + K/V cache; if it remains far above target, continue with structural latency optimizations rather than Workflow3.",
-    "safety": "Continue using no-pipe monitoring for long GPU runs; keep the 30 GiB own-process fuse; avoid GPU3 while the VideoMME job remains active."
+    "name": "implementation_level_latency_or_depth0_mechanism",
+    "purpose": "Continue Workflow2 with either implementation-level latency improvements that preserve the source-aware semantic path, or a targeted mechanism for optional depth 0% that does not expand HBM linearly.",
+    "safety": "Keep GPU own-process fuse at 30 GiB, use 22 GiB PyTorch cap, and separate diagnostic/oracle/answer-constrained results from main PyTorch dot-product results."
   },
-  "last_local_process_update": "Workflow2 validated context=3 + retrieved K/V cache across three seeds, refreshed the 10K PPL check, and kept Workflow3 blocked because latency is still the unresolved acceptance item."
+  "last_local_process_update": "Recorded Workflow2 round 20: semantic pruning failed, answer-constrained context=3 passed 4/4, no-context short-output failed 1/4, optional 0% remains blocked even with Sink=512.",
+  "round": 20,
+  "known_facts": [
+    "Strict no-fusion context=3 pruning ablations for TTL12, top_k=2, qhist=32, and layers4-27 all failed on seed6004 depth 25/50, usually by generating 000000; do not repeat these as main optimization paths.",
+    "Source-aware context=3 with K/V cache and max_new_tokens=16 passed seed6004 depth 25/50 at 4/4 under the 22 GiB cap, but this is an answer-constrained latency diagnostic, not the 24-token main result.",
+    "Source-aware no-context with max_new_tokens=16 scored 3/4, showing retrieve_focus_context_tokens=3 improves short-answer robustness.",
+    "Optional depth 99% passes under source-aware context=3, but optional depth 0% still fails even with Sink increased from 64 to 512."
+  ]
 }
