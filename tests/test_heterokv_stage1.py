@@ -290,6 +290,66 @@ def test_source_overlap_filter_drops_zero_overlap_false_positive():
     assert selected[0]["source_token_score"] > 0.0
 
 
+def test_source_cue_focus_only_retrieval_returns_answer_span():
+    compressor = KVCompressor(group_size=4, bits=4)
+    manager = HeteroKVManager(
+        num_layers=1,
+        sink_tokens=2,
+        hbm_budget_tokens=6,
+        device="cpu",
+        enable_quant=True,
+        enable_prefetch=False,
+        group_size=4,
+        enable_method_d=True,
+        method_d_source_cue_focus=True,
+        method_d_source_cue_answer_tokens=2,
+        method_d_retrieve_focus_only=True,
+    )
+
+    class DummyQueryAware:
+        last_scores = {"l0_source": 10.0}
+        last_best_token_offsets = {"l0_source": 3}
+        last_scoring_backend = "test"
+
+    class DummyRetriever:
+        query_aware_retriever = DummyQueryAware()
+
+        def retrieve_chunks(self, **kwargs):
+            return ["l0_source"], "dot_product"
+
+    k = torch.randn(1, 1, 6, 4, dtype=torch.float16)
+    v = torch.randn(1, 1, 6, 4, dtype=torch.float16)
+    qk, sk, zk = compressor.compress(k)
+    qv, sv, zv = compressor.compress(v)
+    manager._method_d_retriever = DummyRetriever()
+    manager._dram.store_entry(
+        "l0_source",
+        {
+            "k_data": qk,
+            "k_scales": sk,
+            "k_zps": zk,
+            "v_data": qv,
+            "v_scales": sv,
+            "v_zps": zv,
+            "positions": torch.arange(6),
+        },
+    )
+    manager._chunk_position_ranges = {"l0_source": (0, 6)}
+    manager._chunk_eviction_order = ["l0_source"]
+    manager.set_source_token_ids(torch.tensor([91, 92, 7, 8, 33, 44]))
+    manager.set_source_cue_token_ids([[91, 92]], answer_tokens=2)
+
+    query = torch.randn(1, 1, 1, 4, dtype=torch.float16)
+    _, _, count, _ = manager.decompress_dram_chunks_method_d(0, query, top_k=1)
+    selected = manager.get_last_method_d_selection(0)
+
+    assert count == 2
+    assert manager.get_last_retrieved_positions(0).tolist() == [2, 3]
+    assert manager.get_last_retrieved_focus_mask(0).tolist() == [True, True]
+    assert selected[0]["focus_only_retrieval"] is True
+    assert selected[0]["retrieved_range"] == [2, 4]
+
+
 def test_method_d_retrieval_preserves_query_dtype():
     manager = HeteroKVManager(
         num_layers=1,

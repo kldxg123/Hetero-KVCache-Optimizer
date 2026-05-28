@@ -524,6 +524,7 @@ def stage_niah(args) -> Dict[str, object]:
         str(args.niah_method_d_source_fusion_source_threshold),
         "--method-d-source-cue-answer-tokens",
         str(args.niah_method_d_source_cue_answer_tokens),
+        "--method-d-retrieve-focus-only" if args.niah_method_d_retrieve_focus_only else None,
         "--method-d-reuse-ttl-tokens",
         str(args.niah_method_d_reuse_ttl_tokens),
         "--method-d-reuse-source-threshold",
@@ -553,6 +554,7 @@ def stage_niah(args) -> Dict[str, object]:
         cmd.append("--method-d-source-fusion-focus-only")
     if args.niah_method_d_source_cue_focus:
         cmd.append("--method-d-source-cue-focus")
+    cmd = [item for item in cmd if item is not None]
     if args.niah_method_d_reuse_kv_cache:
         cmd.append("--method-d-reuse-kv-cache")
     if args.niah_method_d_triton_scoring:
@@ -757,6 +759,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--niah-method-d-source-fusion-focus-only", action="store_true")
     parser.add_argument("--niah-method-d-source-cue-focus", action="store_true")
     parser.add_argument("--niah-method-d-source-cue-answer-tokens", type=int, default=8)
+    parser.add_argument("--niah-method-d-retrieve-focus-only", action="store_true")
     parser.add_argument("--niah-method-d-reuse-ttl-tokens", type=int, default=0)
     parser.add_argument("--niah-method-d-reuse-source-threshold", type=float, default=0.0)
     parser.add_argument("--niah-method-d-reuse-kv-cache", action="store_true")

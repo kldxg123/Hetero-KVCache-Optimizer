@@ -1090,3 +1090,46 @@ Current scientific status:
 - Existing accepted 20/20 NIAH result remains a real result for those seeds/code-depth pairings.
 - The new one-trial seed6004 pairing shows the NIAH claim is not yet paper-grade robust.
 - Workflow3 should remain blocked.
+
+## Workflow 2.0 Round 17: Source-Cue Answer-Span Physical Retrieval
+
+Implementation:
+
+- Added opt-in `method_d_retrieve_focus_only` / `--method-d-retrieve-focus-only`.
+- When `source_cue_focus` finds a non-oracle cue inside a retrieved chunk, the manager physically slices returned K/V to only the cue-following answer span.
+- This differs from earlier `source_fusion_focus_only`, which changed only the source-fusion branch while leaving the surrounding retrieved window visible to ordinary attention.
+- Default remains disabled.
+
+Validation:
+
+| Test | Result |
+| --- | ---: |
+| Stage1 CPU | `15 passed` |
+| Stage1 GPU3 | `15 passed` |
+
+Real-model results under 22 GiB PyTorch cap and 30 GiB own-process fuse:
+
+| Run | Accuracy | Peak process memory | Max reserved | Decode | Artifact |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 32K sanity, seed6004 depth50 | `1/1` | `21506 MiB` | `20.6465 GiB` | smoke | `experiments/niah_32k_focus_only_retrieval_smoke_20260528_141635.json` |
+| 128K required depths, seed6004, focus-only + TTL6 | `4/4` | `21508 MiB` | `20.6465 GiB` | `~642 ms/step` avg | `experiments/niah_128k_required_focus_only_retrieval_seed6004_20260528_141751.json` |
+| 128K required depths, seed6004, focus-only no TTL | `4/4` | `21508 MiB` | `20.6465 GiB` | `~1440 ms/step` avg | `experiments/niah_128k_required_focus_only_no_ttl_seed6004_20260528_142431.json` |
+
+Key interpretation:
+
+- The no-TTL focus-only run improves the new seed6004 one-trial required-depth pattern from the previous `2/4` PyTorch main-path result to `4/4`.
+- Therefore the mechanism addresses answer-span fidelity, not merely retrieval recall.
+- No-TTL is too slow for the latency claim; the candidate path is focus-only plus selected-key TTL.
+
+Triton follow-up:
+
+| Run | Accuracy | Decode | Backend | Artifact |
+| --- | ---: | ---: | --- | --- |
+| 32K focus-only + Triton batched scoring | `1/1` | `~697 ms/step` | `triton_int4_batch` | `experiments/niah_32k_focus_only_triton_smoke_20260528_143236.json` |
+| 128K depth50 focus-only + Triton batched scoring + TTL6 | `1/1` | `~869 ms/step` | `triton_int4_batch` | `experiments/niah_128k_depth50_focus_only_triton_ttl_seed6004_20260528_143358.json` |
+
+Decision:
+
+- Keep focus-only retrieval as the next robustness candidate.
+- Do not promote Triton scoring to the main path; it is correct in these probes but slower end-to-end than PyTorch focus-only TTL.
+- Workflow3 remains blocked until the focus-only candidate is tested across broader seeds/trials and latency/PPL evidence is refreshed.

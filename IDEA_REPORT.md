@@ -853,3 +853,58 @@ Current ranked ideas:
 | 3 | Decode-time extraction head / constrained answer span probe | Diagnostic only: separate cache quality from free-form generation drift | Candidate |
 | 4 | Broader randomized 128K NIAH table | Measure robustness honestly after each fix | Required before Workflow3 |
 | 5 | Triton scoring | Keep experimental until semantic parity is restored | Defer |
+
+## Workflow 2.0 Round 17 Idea Outcomes
+
+### Implemented Candidate: Source-Cue Answer-Span Physical Retrieval
+
+Idea:
+
+- When a retrieved DRAM chunk contains a registered non-oracle source cue such as `The target code is ` or `target_code=`, physically return only the answer tokens immediately after that cue.
+- This is stricter than `source_fusion_focus_only`: the ordinary attention path no longer sees the surrounding 64-token retrieved window for source-cue hits.
+- The feature is opt-in via `method_d_retrieve_focus_only` / `--method-d-retrieve-focus-only`.
+
+Why it should help:
+
+- Previous failure analysis showed the correct needle chunk was often retrieved, but final generation still drifted.
+- Removing surrounding retrieved filler tokens reduces false-positive attention mass after the cache has already found the source.
+- It also reduces retrieved K/V bytes for source-cue hits, while preserving the fixed-HBM invariant.
+
+Evidence:
+
+| Run | Result | Peak process memory | Artifact |
+|---|---:|---:|---|
+| Stage1 CPU/GPU | `15 passed` / `15 passed` | small | `tests/test_heterokv_stage1.py` |
+| 32K sanity, focus-only retrieval | `1/1` | `21506 MiB` | `experiments/niah_32k_focus_only_retrieval_smoke_20260528_141635.json` |
+| 128K required depths seed6004, focus-only + TTL6 | `4/4` | `21508 MiB` | `experiments/niah_128k_required_focus_only_retrieval_seed6004_20260528_141751.json` |
+| 128K required depths seed6004, focus-only without TTL | `4/4` | `21508 MiB` | `experiments/niah_128k_required_focus_only_no_ttl_seed6004_20260528_142431.json` |
+
+Interpretation:
+
+- This branch fixes the specific new seed6004 one-trial failure pattern where the older PyTorch main path scored `2/4`.
+- No-TTL focus-only retrieval is accurate but too slow (`~1440 ms/step`), so it is not a latency path by itself.
+- Focus-only + TTL6 is accurate and bounded, but still slower than the prior TTL main average on the same class of runs.
+
+### Rejected For Main Path: Triton Scoring + Focus-Only
+
+Evidence:
+
+| Run | Result | Decode | Artifact |
+|---|---:|---:|---|
+| 32K focus-only + Triton batched scoring | `1/1` | `~697 ms/step` | `experiments/niah_32k_focus_only_triton_smoke_20260528_143236.json` |
+| 128K depth50 focus-only + Triton batched scoring + TTL6 | `1/1` | `~869 ms/step` | `experiments/niah_128k_depth50_focus_only_triton_ttl_seed6004_20260528_143358.json` |
+
+Decision:
+
+- Keep Triton scoring as a mechanism/microbench branch.
+- Do not expand it to a full 128K matrix because end-to-end latency is worse than the PyTorch focus-only TTL path.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Source-cue answer-span physical retrieval | Improve final answer fidelity after correct source retrieval | Implemented; candidate robustness path |
+| 2 | Focus-only + selected-key TTL6 | Combine robustness with tolerable latency | Needs broader seed/trial matrix |
+| 3 | Attention-time source suppressor | Further reduce non-source retrieved influence without hard span filtering | Candidate if focus-only regresses broader tests |
+| 4 | Boundary-aware 0% NIAH handling | Address known prefix-boundary failure separately | Candidate, not in current claim |
+| 5 | Triton scoring | Mechanism branch only until it improves end-to-end latency | Defer |

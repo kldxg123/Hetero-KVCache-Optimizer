@@ -81,6 +81,7 @@ class FusedHeteroCache(DynamicCache):
         method_d_source_fusion_focus_only: bool = False,
         method_d_source_cue_focus: bool = False,
         method_d_source_cue_answer_tokens: int = 8,
+        method_d_retrieve_focus_only: bool = False,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
         method_d_reuse_kv_cache: bool = False,
@@ -136,6 +137,7 @@ class FusedHeteroCache(DynamicCache):
         self.method_d_source_fusion_focus_only = bool(method_d_source_fusion_focus_only)
         self.method_d_source_cue_focus = bool(method_d_source_cue_focus)
         self.method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
+        self.method_d_retrieve_focus_only = bool(method_d_retrieve_focus_only)
         self.method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self.method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
         self.method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
@@ -197,6 +199,7 @@ class FusedHeteroCache(DynamicCache):
             f"{' source_overlap_required' if self.method_d_require_source_overlap else ''}"
             f"{f' focus_bias={self.method_d_focus_bias:.3f}' if self.method_d_focus_bias else ''}"
             f"{f' source_fusion={self.method_d_source_fusion_alpha:.3f}' if self.method_d_source_fusion_alpha else ''}"
+            f"{' retrieve_focus_only' if self.method_d_retrieve_focus_only else ''}"
             f"{f' reuse_ttl={self.method_d_reuse_ttl_tokens}' if self.method_d_reuse_ttl_tokens else ''}"
             f"{' reuse_kv_cache=ON' if self.method_d_reuse_kv_cache else ''}"
             f"{' triton_scoring=ON' if self.method_d_triton_scoring else ''}"
@@ -236,6 +239,7 @@ class FusedHeteroCache(DynamicCache):
             ),
             method_d_source_cue_focus=self.method_d_source_cue_focus,
             method_d_source_cue_answer_tokens=self.method_d_source_cue_answer_tokens,
+            method_d_retrieve_focus_only=self.method_d_retrieve_focus_only,
             method_d_reuse_ttl_tokens=self.method_d_reuse_ttl_tokens,
             method_d_reuse_source_threshold=self.method_d_reuse_source_threshold,
             method_d_reuse_kv_cache=self.method_d_reuse_kv_cache,
@@ -331,7 +335,7 @@ class FusedHeteroCache(DynamicCache):
                 # ──────────────────────────────────────────────────────
                 # Method D: Query-Aware Retrieval (INDEPENDENT EXPERIMENT)
                 # 1. Use current token's K as query to compute similarity
-                # 2. Select top-k chunks by cosine similarity
+                # 2. Select top-k chunks by token-level Query x Key dot product
                 # 3. Retrieve and decompress only selected chunks
                 # ──────────────────────────────────────────────────────
                 # Prefer RoPE-applied query_states captured by the attention
@@ -496,6 +500,7 @@ class FusedHeteroCache(DynamicCache):
             "source_fusion_alpha": float(self.method_d_source_fusion_alpha),
             "source_fusion_focus_only": bool(self.method_d_source_fusion_focus_only),
             "source_cue_focus": bool(self.method_d_source_cue_focus),
+            "retrieve_focus_only": bool(self.method_d_retrieve_focus_only),
             "effective_source_fusion_alpha": float(
                 self._last_retrieved_source_fusion_alpha.get(layer_idx, 0.0)
             ),
@@ -981,6 +986,7 @@ def build_fused_cache(
     method_d_source_fusion_focus_only: bool = False,
     method_d_source_cue_focus: bool = False,
     method_d_source_cue_answer_tokens: int = 8,
+    method_d_retrieve_focus_only: bool = False,
     method_d_reuse_ttl_tokens: int = 0,
     method_d_reuse_source_threshold: float = 0.0,
     method_d_reuse_kv_cache: bool = False,
@@ -1037,6 +1043,7 @@ def build_fused_cache(
         method_d_source_fusion_focus_only=method_d_source_fusion_focus_only,
         method_d_source_cue_focus=method_d_source_cue_focus,
         method_d_source_cue_answer_tokens=method_d_source_cue_answer_tokens,
+        method_d_retrieve_focus_only=method_d_retrieve_focus_only,
         method_d_reuse_ttl_tokens=method_d_reuse_ttl_tokens,
         method_d_reuse_source_threshold=method_d_reuse_source_threshold,
         method_d_reuse_kv_cache=method_d_reuse_kv_cache,

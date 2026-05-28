@@ -73,6 +73,7 @@ class HeteroKVManager:
         method_d_allow_source_before_min_position: bool = False,
         method_d_source_cue_focus: bool = False,
         method_d_source_cue_answer_tokens: int = 8,
+        method_d_retrieve_focus_only: bool = False,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
         method_d_reuse_kv_cache: bool = False,
@@ -152,6 +153,7 @@ class HeteroKVManager:
         )
         self._method_d_source_cue_focus = bool(method_d_source_cue_focus)
         self._method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
+        self._method_d_retrieve_focus_only = bool(method_d_retrieve_focus_only)
         self._method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self._method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
         self._method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
@@ -1427,8 +1429,8 @@ class HeteroKVManager:
         """
         Method D: Query-aware DRAM chunk retrieval.
 
-        Uses cosine similarity between current query K and stored chunk
-        embeddings to select the most relevant chunks for retrieval.
+        Uses token-level Query x Key dot-product scoring against quantized
+        DRAM keys to select the most relevant chunks for retrieval.
 
         This is an INDEPENDENT method that does NOT affect the existing
         adaptive (Method C) retrieval logic.
@@ -1721,6 +1723,29 @@ class HeteroKVManager:
                 if cue_focus_mask is not None and cue_focus_mask.any():
                     focus_mask = cue_focus_mask
                     focus_source = "source_cue"
+                if (
+                    self._method_d_retrieve_focus_only
+                    and focus_source == "source_cue"
+                    and focus_mask.numel() == restored_k.shape[-2]
+                    and bool(focus_mask.any().item())
+                ):
+                    focus_indices = torch.nonzero(focus_mask, as_tuple=False).reshape(-1)
+                    restored_k = restored_k.index_select(-2, focus_indices)
+                    restored_v = restored_v.index_select(-2, focus_indices)
+                    chunk_pos = chunk_pos.index_select(0, focus_indices)
+                    focus_mask = torch.ones(
+                        restored_k.shape[-2], dtype=torch.bool, device=restored_k.device
+                    )
+                    for item in self._last_method_d_selection.get(layer_idx, []):
+                        if item.get("chunk_key") == chunk_key:
+                            item["focus_only_retrieval"] = True
+                            item["focus_source"] = focus_source
+                            item["focus_token_count"] = int(focus_mask.sum().item())
+                            if chunk_pos.numel() > 0:
+                                item["retrieved_range"] = [
+                                    int(chunk_pos[0].item()),
+                                    int(chunk_pos[-1].item()) + 1,
+                                ]
                 token_window = self._method_d_token_window
                 if token_window > 0 and restored_k.shape[-2] > token_window:
                     focus_indices = torch.nonzero(focus_mask, as_tuple=False).reshape(-1)
