@@ -149,6 +149,8 @@ def build_cache(args, model, mode: str, needle_range=None):
         method_d_retrieve_focus_context_tokens=args.method_d_retrieve_focus_context_tokens,
         method_d_reuse_ttl_tokens=args.method_d_reuse_ttl_tokens,
         method_d_reuse_source_threshold=args.method_d_reuse_source_threshold,
+        method_d_source_gate_bypass_threshold=args.method_d_source_gate_bypass_threshold,
+        method_d_reuse_gate_bypass=args.method_d_reuse_gate_bypass,
         method_d_reuse_kv_cache=args.method_d_reuse_kv_cache,
         method_d_triton_scoring=args.method_d_triton_scoring,
         method_d_triton_scoring_batch_chunks=args.method_d_triton_scoring_batch_chunks,
@@ -577,6 +579,8 @@ def main():
     parser.add_argument("--method-d-retrieve-focus-context-tokens", type=int, default=0)
     parser.add_argument("--method-d-reuse-ttl-tokens", type=int, default=0)
     parser.add_argument("--method-d-reuse-source-threshold", type=float, default=0.0)
+    parser.add_argument("--method-d-source-gate-bypass-threshold", type=float, default=0.0)
+    parser.add_argument("--method-d-reuse-gate-bypass", action="store_true")
     parser.add_argument("--method-d-reuse-kv-cache", action="store_true")
     parser.add_argument("--method-d-triton-scoring", action="store_true")
     parser.add_argument("--method-d-triton-scoring-batch-chunks", type=int, default=8)

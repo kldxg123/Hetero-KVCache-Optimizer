@@ -1,5 +1,5 @@
 {
-  "current_round": 19,
+  "current_round": 23,
   "workflow": "workflow2",
   "workflow3_ready": false,
   "accepted_claims": [
@@ -15,38 +15,44 @@
     "Source-cue answer-span physical retrieval is implemented as an opt-in mechanism and passed Stage1 CPU/GPU tests plus 32K and 128K real-model NIAH probes under the 22 GiB cap.",
     "Cue-context focus-only retrieval with context=3 passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, with process peaks about 21.1 GiB and max_reserved about 20.65 GiB.",
     "Under context=3, retrieved K/V cache reuse was retested and passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, with decode around 551-680 ms/step on the shared GPU2 runs.",
-    "The 10K WikiText-2 PPL suffix test was refreshed with retrieve_focus_only=True and retrieve_focus_context_tokens=3: FullKV PPL 4.9011 vs HeteroKV PPL 4.9046, +0.07%."
+    "The 10K WikiText-2 PPL suffix test was refreshed with retrieve_focus_only=True and retrieve_focus_context_tokens=3: FullKV PPL 4.9011 vs HeteroKV PPL 4.9046, +0.07%.",
+    "Source-aware Method-D with deferred dequant and Triton batched INT4 scoring passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20 under the 22 GiB cap, with aggregate mean decode about 488.7 ms/step and process peak about 21.65 GiB."
   ],
   "blocked_claims": [
     "Workflow3 / paper-writing is not ready: latency remains far above a <=2x FullKV SDPA decode baseline.",
     "Optional 0% NIAH boundary still fails under the main configuration and under the source-before-min diagnostic branch; do not claim full boundary robustness.",
     "The PPL evidence is real and now includes 8K and 10K suffix evaluations, but it is still not a broad 128K language-modeling suite.",
     "A100-under-22GiB evidence supports a 4090-like memory-envelope survival claim, but not true 4090 latency.",
-    "Path A is not an accepted main path: 128K required-depth accuracy was 2/4 even after FP16 dequant rounding in the Triton kernel.",
+    "Old non-source-aware Path A/Triton required-depth runs remain rejected at 2/4; do not confuse them with the current source-aware Triton scoring candidate.",
     "Retrieved K/V cache reuse is not accepted as a default optimization: it improved a 32K smoke runtime but 128K required-depth accuracy was 2/4, so it is now behind method_d_reuse_kv_cache and defaults off.",
     "A new seed6004 one-trial required-depth pairing exposed a main-path robustness gap: PyTorch scoring with selected-key reuse found the needle chunk but still scored only 2/4.",
     "Path A is retrieval scoring only; fused V weighting / fused attention output remains unimplemented and unclaimed.",
     "Latency remains much slower than the relaxed FullKV SDPA reference and was measured under shared-GPU contention, so Workflow3 is still blocked.",
     "Do not claim optional 0% boundary robustness: source-aware context=3 scored 0/2 at depth 0%, and Sink=512 also scored 0/2 at depth 0%.",
     "Do not use answer-constrained max_new_tokens=16 as the primary latency claim; keep it separate from the 24-token open-ended NIAH result.",
-    "Deferred dequant is an incremental latency improvement, not enough for the <=2x FullKV SDPA latency target; Workflow3 remains blocked."
+    "Deferred dequant is an incremental latency improvement, not enough for the <=2x FullKV SDPA latency target; Workflow3 remains blocked.",
+    "Workflow3 is still not ready: the source-aware Triton scoring candidate needs a refreshed PPL run and a fair latency/baseline table before paper-writing claims.",
+    "Source-gate bypass threshold 35 is rejected: it reduced a 32K smoke decode to about 229 ms/step but failed accuracy at 0/1.",
+    "TTL reuse gate bypass is diagnostic-only: it preserved 128K targeted accuracy at 4/4 but slowed average decode to about 747 ms/step.",
+    "Do not claim long-PPL DRAM retrieval is solved: 12K PPL passed but did not trigger DRAM retrieval, while 14K/16K stress PPL OOMs under the 22 GiB cap.",
+    "BF16 decode attention and SDPA/GQA diagnostics are not accepted main paths: they passed small NIAH smoke but did not solve 14K/16K PPL OOM under 22 GiB."
   ],
   "latest_success": {
-    "artifact": "experiments/niah_128k_sourceaware_context3_deferred_seed7777_trial1_gpu2_20260528_wf2.json",
-    "summary": "Deferred dequant completed the third-seed lightweight 128K required-depth check at 4/4; combined deferred required-depth evidence is 20/20."
+    "artifact": "experiments/ppl_12k_prefix6144_final_triton_context3_gpu2_20260528_wf2.json",
+    "summary": "12K WikiText-2 PPL with final Triton-scoring flags passed under the 22 GiB cap, but it did not trigger DRAM retrieval."
   },
   "latest_failure": {
-    "artifact": "experiments/niah_128k_sourceaware_context3_sink512_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json",
-    "summary": "Increasing Sink from 64 to 512 did not fix optional depth 0%; optional 0% remains a mechanistic boundary weakness rather than a memory issue."
+    "artifact": "experiments/ppl_14k_prefix6144_tail6144_triton_context3_sdpa_gqa_heteroonly_gpu2_20260528_wf2.log",
+    "summary": "14K tail6144 long-PPL stress still OOMs under the 22 GiB cap even with SDPA/GQA decode attention; long-PPL DRAM evidence remains blocked."
   },
-  "active_hypothesis": "The strongest main path is source-aware cue focus plus token-level Method-D retrieval, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, retrieve_focus_context_tokens=3, and deferred dequant gating. It now has 20/20 required-depth NIAH evidence across three seeds under the 22 GiB cap, but Workflow3 remains blocked by latency versus FullKV SDPA and optional 0% boundary robustness.",
+  "active_hypothesis": "The strongest current NIAH/latency candidate remains source-aware cue focus plus token-level Method-D retrieval, deferred dequant gating, Triton batched INT4 scoring, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, and retrieve_focus_context_tokens=3. It has 20/20 required-depth 128K NIAH evidence under the 22 GiB cap. The current blocker is long-PPL-with-DRAM under 22 GiB, which needs a true memory-efficient attention path beyond threshold/gate tweaks.",
   "next_experiment": {
-    "name": "gate_cost_or_source_bypass_latency_probe",
-    "purpose": "Profile or test a source-aware gate bypass to reduce per-layer HBM gate dot-product cost without pruning top_k/qhist/layers.",
-    "safety": "Keep all new latency ideas separate from the accepted deferred PyTorch main result until they pass required-depth NIAH."
+    "name": "memory_efficient_attention_or_24g_ppl_supplement",
+    "purpose": "Either implement a true no-repeat/no-score-buffer attention path that preserves source fusion, or run a clearly labeled 24 GiB supplementary long-PPL stress test.",
+    "safety": "Do not run more long PPL under 22 GiB until attention temporaries are reduced; keep 30 GiB process fuse."
   },
-  "last_local_process_update": "Implemented and validated deferred dequant gating; 128K seed6004 all required depths passed 8/8 with stable memory and modest latency improvement.",
-  "round": 21,
+  "last_local_process_update": "Recorded Workflow2 Round 23: PPL baseline fixed; 12K final-flags PPL passes without DRAM; long-PPL DRAM stress remains blocked by attention temporary memory under 22 GiB.",
+  "round": 23,
   "known_facts": [
     "Strict no-fusion context=3 pruning ablations for TTL12, top_k=2, qhist=32, and layers4-27 all failed on seed6004 depth 25/50, usually by generating 000000; do not repeat these as main optimization paths.",
     "Source-aware context=3 with K/V cache and max_new_tokens=16 passed seed6004 depth 25/50 at 4/4 under the 22 GiB cap, but this is an answer-constrained latency diagnostic, not the 24-token main result.",
@@ -56,6 +62,12 @@
     "Deferred dequant passed Stage1 16/16, a 32K real-model smoke, and 128K seed6004 required-depth testing at 8/8 with peak process memory about 21.1 GiB.",
     "Deferred dequant improved seed6004 full required-depth average decode from the previous context3 K/V-cache run around 597 ms/step to about 559 ms/step in a shared-GPU run.",
     "Deferred dequant now has 20/20 required-depth 128K NIAH evidence across seeds 4242, 6004, and 7777, with process peaks about 21.1 GiB.",
-    "Deferred dequant seed4242 full required-depth run passed 8/8 with average decode about 536 ms/step; seed7777 one-trial/depth passed 4/4 with about 482 ms/step."
+    "Deferred dequant seed4242 full required-depth run passed 8/8 with average decode about 536 ms/step; seed7777 one-trial/depth passed 4/4 with about 482 ms/step.",
+    "Source-aware Triton batched scoring preserves the deferred-dequant semantic path and passed 128K required-depth NIAH at 20/20 across seeds 4242, 6004, and 7777.",
+    "On the same 20 required-depth cases, Triton batched scoring averaged about 488.7 ms/step versus deferred torch scoring at about 534.5 ms/step, with essentially unchanged peak process memory around 21.65 GiB.",
+    "Aggressive source-gate bypass threshold 35 failed a 32K smoke at 0/1 despite being fast; threshold 50 had no bypass events. TTL reuse gate bypass passed a 128K targeted 4/4 but was slower than the main path.",
+    "PPL full baseline was corrected to use FullKV decode-suffix loss with logits_to_keep=1 when loss_start_token > 0, avoiding artificial full-suffix logits OOM.",
+    "12K WikiText-2 final-flags PPL passed under the 22 GiB cap: FullKV 5.2026 vs HeteroKV 5.1917, delta -0.21%, but method_d_event_count=0 and dram_entries=0 so it is a no-DRAM PPL point.",
+    "Long PPL with DRAM stress remains blocked at the 22 GiB cap: 14K/16K attempts OOM around 22.4 GiB process memory due attention temporaries even with BF16 and SDPA/GQA diagnostics."
   ]
 }

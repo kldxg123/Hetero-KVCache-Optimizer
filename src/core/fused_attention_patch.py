@@ -15,6 +15,7 @@ This is the TRUE integration path for Triton kernels in the inference pipeline.
 
 import contextlib
 import functools
+import os
 import types
 from typing import Optional, Tuple
 
@@ -55,14 +56,111 @@ def heterokv_safe_attention_forward(
     except Exception:
         from transformers.models.llama.modeling_llama import repeat_kv
 
-    key_states = repeat_kv(key, module.num_key_value_groups)
-    value_states = repeat_kv(value, module.num_key_value_groups)
-    kv_len = key_states.shape[-2]
     q_len = query.shape[-2]
-    decode_fp32 = q_len == 1
-    scores = torch.matmul(
-        query.float(), key_states.float().transpose(2, 3)
-    ) * scaling
+    use_decode_sdpa = (
+        q_len == 1
+        and os.getenv("HETEROKV_DECODE_SDPA", "0") in {"1", "true", "True"}
+        and not (retrieval_source_fusion_alpha and retrieved_count > 0)
+    )
+    if use_decode_sdpa:
+        key_states = key
+        value_states = value
+    else:
+        key_states = repeat_kv(key, module.num_key_value_groups)
+        value_states = repeat_kv(value, module.num_key_value_groups)
+    kv_len = key_states.shape[-2]
+    decode_fp32 = q_len == 1 and os.getenv("HETEROKV_DECODE_FP32_ATTN", "1") not in {
+        "0",
+        "false",
+        "False",
+    }
+
+    if use_decode_sdpa:
+        sdpa_mask = None
+        if attention_mask is not None:
+            mask = attention_mask
+            if mask.dim() == 2:
+                mask = mask[:, None, None, :]
+            elif mask.dim() == 3:
+                mask = mask[:, None, :, :]
+            if mask.shape[-2] not in (1, q_len):
+                mask = mask[:, :, -q_len:, :]
+            if mask.shape[-1] < kv_len:
+                pad_shape = (*mask.shape[:-1], kv_len - mask.shape[-1])
+                pad = torch.zeros(pad_shape, dtype=mask.dtype, device=mask.device)
+                mask = torch.cat([pad, mask], dim=-1)
+            elif mask.shape[-1] > kv_len:
+                mask = mask[:, :, :, -kv_len:]
+            sdpa_mask = mask.to(dtype=query.dtype, device=query.device)
+        if key_positions is not None and cache_position is not None:
+            q_pos = cache_position.reshape(-1)[-q_len:].to(query.device)
+            k_pos = key_positions.reshape(-1).to(query.device)
+            if k_pos.numel() == kv_len:
+                future = k_pos.view(1, 1, 1, -1) > q_pos.view(1, 1, -1, 1)
+                if sdpa_mask is None:
+                    sdpa_mask = torch.zeros(
+                        (query.shape[0], 1, q_len, kv_len),
+                        dtype=query.dtype,
+                        device=query.device,
+                    )
+                sdpa_mask = sdpa_mask.masked_fill(
+                    future, torch.finfo(sdpa_mask.dtype).min
+                )
+        if retrieval_bias and retrieved_count > 0:
+            n = min(int(retrieved_count), kv_len)
+            if sdpa_mask is None:
+                sdpa_mask = torch.zeros(
+                    (query.shape[0], 1, q_len, kv_len),
+                    dtype=query.dtype,
+                    device=query.device,
+                )
+            sdpa_mask[..., :n] = sdpa_mask[..., :n] + float(retrieval_bias)
+        if retrieved_count > 0 and retrieval_focus_mask is not None:
+            n = min(int(retrieved_count), kv_len)
+            focus = retrieval_focus_mask.reshape(-1)[:n].to(query.device, dtype=torch.bool)
+            if focus.numel() == n and focus.any():
+                if sdpa_mask is None:
+                    sdpa_mask = torch.zeros(
+                        (query.shape[0], 1, q_len, kv_len),
+                        dtype=query.dtype,
+                        device=query.device,
+                    )
+                if retrieval_nonfocus_penalty:
+                    sdpa_mask[..., :n] = sdpa_mask[..., :n] - float(retrieval_nonfocus_penalty)
+                if retrieval_focus_bias:
+                    focus_bias = torch.zeros(n, dtype=sdpa_mask.dtype, device=query.device)
+                    focus_bias[focus] = float(retrieval_focus_bias) + float(retrieval_nonfocus_penalty)
+                    sdpa_mask[..., :n] = sdpa_mask[..., :n] + focus_bias.view(1, 1, 1, n)
+        sdpa_kwargs = {
+            "attn_mask": sdpa_mask,
+            "dropout_p": dropout if module.training else 0.0,
+            "is_causal": False,
+            "scale": scaling,
+        }
+        if module.num_key_value_groups != 1:
+            sdpa_kwargs["enable_gqa"] = True
+        try:
+            attn_output = F.scaled_dot_product_attention(
+                query, key_states, value_states, **sdpa_kwargs
+            )
+        except TypeError:
+            if "enable_gqa" not in sdpa_kwargs:
+                raise
+            sdpa_kwargs.pop("enable_gqa", None)
+            key_states = repeat_kv(key, module.num_key_value_groups)
+            value_states = repeat_kv(value, module.num_key_value_groups)
+            attn_output = F.scaled_dot_product_attention(
+                query, key_states, value_states, **sdpa_kwargs
+            )
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        return attn_output, None
+
+    if decode_fp32:
+        scores = torch.matmul(
+            query.float(), key_states.float().transpose(2, 3)
+        ) * scaling
+    else:
+        scores = torch.matmul(query, key_states.transpose(2, 3)) * scaling
 
     if attention_mask is not None:
         mask = attention_mask
@@ -231,11 +329,19 @@ def _heterokv_attention_forward(
         retrieval_source_fusion_alpha=retrieval_source_fusion_alpha,
         retrieval_source_fusion_focus_only=retrieval_source_fusion_focus_only,
     )
-    if past_key_values is not None and hasattr(past_key_values, "record_attention_probe"):
+    if (
+        attn_weights is not None
+        and past_key_values is not None
+        and hasattr(past_key_values, "record_attention_probe")
+    ):
         past_key_values.record_attention_probe(
             self.layer_idx, attn_weights, key_positions, cache_position
         )
-    if past_key_values is not None and hasattr(past_key_values, "_pending_attention_weights"):
+    if (
+        attn_weights is not None
+        and past_key_values is not None
+        and hasattr(past_key_values, "_pending_attention_weights")
+    ):
         past_key_values._pending_attention_weights = (
             attn_weights[0, :, -1, :].mean(dim=0).detach()
         )

@@ -85,6 +85,8 @@ class FusedHeteroCache(DynamicCache):
         method_d_retrieve_focus_context_tokens: int = 0,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
+        method_d_source_gate_bypass_threshold: float = 0.0,
+        method_d_reuse_gate_bypass: bool = False,
         method_d_reuse_kv_cache: bool = False,
         method_d_triton_scoring: bool = False,
         method_d_triton_scoring_batch_chunks: int = 8,
@@ -144,6 +146,10 @@ class FusedHeteroCache(DynamicCache):
         )
         self.method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self.method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
+        self.method_d_source_gate_bypass_threshold = max(
+            0.0, float(method_d_source_gate_bypass_threshold)
+        )
+        self.method_d_reuse_gate_bypass = bool(method_d_reuse_gate_bypass)
         self.method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
         self.method_d_triton_scoring = bool(method_d_triton_scoring)
         self.method_d_triton_scoring_batch_chunks = max(
@@ -205,6 +211,8 @@ class FusedHeteroCache(DynamicCache):
             f"{f' source_fusion={self.method_d_source_fusion_alpha:.3f}' if self.method_d_source_fusion_alpha else ''}"
             f"{' retrieve_focus_only' if self.method_d_retrieve_focus_only else ''}"
             f"{f' reuse_ttl={self.method_d_reuse_ttl_tokens}' if self.method_d_reuse_ttl_tokens else ''}"
+            f"{f' source_gate_bypass>={self.method_d_source_gate_bypass_threshold:.3f}' if self.method_d_source_gate_bypass_threshold else ''}"
+            f"{' reuse_gate_bypass=ON' if self.method_d_reuse_gate_bypass else ''}"
             f"{' reuse_kv_cache=ON' if self.method_d_reuse_kv_cache else ''}"
             f"{' triton_scoring=ON' if self.method_d_triton_scoring else ''}"
             f"{f' triton_batch={self.method_d_triton_scoring_batch_chunks}' if self.method_d_triton_scoring else ''}"
@@ -358,10 +366,14 @@ class FusedHeteroCache(DynamicCache):
                     score_only=True,
                 )
                 if selected_count > 0:
-                    use_retrieval, gate_info = self._method_d_gate_retrieval(
-                        query_k, out_k, manager
-                    )
                     selected_chunks = manager.get_last_method_d_selection(layer_idx)
+                    gate_info = self._method_d_source_gate_shortcut(selected_chunks)
+                    if gate_info is None:
+                        use_retrieval, gate_info = self._method_d_gate_retrieval(
+                            query_k, out_k, manager
+                        )
+                    else:
+                        use_retrieval = True
                     effective_alpha = (
                         self._method_d_effective_source_fusion_alpha(selected_chunks)
                         if use_retrieval else 0.0
@@ -536,6 +548,13 @@ class FusedHeteroCache(DynamicCache):
             ),
             "reuse_ttl_tokens": int(self.method_d_reuse_ttl_tokens),
             "reuse_source_threshold": float(self.method_d_reuse_source_threshold),
+            "source_gate_bypass_threshold": float(
+                self.method_d_source_gate_bypass_threshold
+            ),
+            "source_gate_bypass": bool(gate_info.get("source_gate_bypass", False)),
+            "source_gate_best": float(gate_info.get("source_gate_best", 0.0)),
+            "reuse_gate_bypass": bool(gate_info.get("reuse_gate_bypass", False)),
+            "reuse_gate_bypass_enabled": bool(self.method_d_reuse_gate_bypass),
             "reuse_kv_cache": bool(self.method_d_reuse_kv_cache),
             "triton_scoring": bool(self.method_d_triton_scoring),
             "triton_scoring_batch_chunks": int(self.method_d_triton_scoring_batch_chunks),
@@ -685,6 +704,50 @@ class FusedHeteroCache(DynamicCache):
         self._last_retrieved_counts.clear()
         self._last_retrieved_focus_masks.clear()
         self._swap_in_tokens = 0
+
+    def _method_d_source_gate_shortcut(self, selected_chunks) -> Optional[Dict[str, float]]:
+        """Optional diagnostic shortcut: trust very strong source-cue evidence.
+
+        This is disabled by default.  When enabled, it skips the HBM-vs-DRAM
+        dot-product gate only if the selected chunk already has a source-cue
+        score above the configured threshold.  It must be reported separately
+        from the default Method-D result because it changes the gate policy.
+        """
+        threshold = float(self.method_d_source_gate_bypass_threshold)
+        if not selected_chunks:
+            return None
+        best_source = 0.0
+        finite_scores = []
+        for chunk in selected_chunks:
+            try:
+                best_source = max(best_source, float(chunk.get("source_token_score", 0.0)))
+            except Exception:
+                pass
+            try:
+                score = float(chunk.get("score", float("nan")))
+                if score == score:
+                    finite_scores.append(score)
+            except Exception:
+                pass
+        dram_best = max(finite_scores) if finite_scores else float("nan")
+        if self.method_d_reuse_gate_bypass and any(
+            bool(chunk.get("reuse_hit", False)) for chunk in selected_chunks
+        ):
+            return {
+                "dram_best": dram_best,
+                "hbm_best": float("nan"),
+                "reuse_gate_bypass": 1.0,
+                "source_gate_best": best_source,
+            }
+        if threshold <= 0.0 or best_source < threshold:
+            return None
+        return {
+            "dram_best": dram_best,
+            "hbm_best": float("nan"),
+            "source_gate_bypass": 1.0,
+            "source_gate_best": best_source,
+            "source_gate_threshold": threshold,
+        }
 
     def _method_d_gate_retrieval(
         self,
@@ -1016,6 +1079,8 @@ def build_fused_cache(
     method_d_retrieve_focus_context_tokens: int = 0,
     method_d_reuse_ttl_tokens: int = 0,
     method_d_reuse_source_threshold: float = 0.0,
+    method_d_source_gate_bypass_threshold: float = 0.0,
+    method_d_reuse_gate_bypass: bool = False,
     method_d_reuse_kv_cache: bool = False,
     method_d_triton_scoring: bool = False,
     method_d_triton_scoring_batch_chunks: int = 8,
@@ -1074,6 +1139,8 @@ def build_fused_cache(
         method_d_retrieve_focus_context_tokens=method_d_retrieve_focus_context_tokens,
         method_d_reuse_ttl_tokens=method_d_reuse_ttl_tokens,
         method_d_reuse_source_threshold=method_d_reuse_source_threshold,
+        method_d_source_gate_bypass_threshold=method_d_source_gate_bypass_threshold,
+        method_d_reuse_gate_bypass=method_d_reuse_gate_bypass,
         method_d_reuse_kv_cache=method_d_reuse_kv_cache,
         method_d_triton_scoring=method_d_triton_scoring,
         method_d_triton_scoring_batch_chunks=method_d_triton_scoring_batch_chunks,

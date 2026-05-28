@@ -174,10 +174,53 @@ def load_wikitext_tokens(tokenizer, max_tokens: int) -> torch.Tensor:
 def eval_full(model, ids: torch.Tensor, loss_start_token: int = 0) -> Dict[str, float]:
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
-    context = ids[:, :-1].to("cuda:0")
-    targets = ids[:, 1:].to("cuda:0")
-    loss_start_token = max(0, min(int(loss_start_token), context.shape[-1] - 1))
+    context_cpu = ids[:, :-1]
+    targets_cpu = ids[:, 1:]
+    loss_start_token = max(0, min(int(loss_start_token), context_cpu.shape[-1] - 1))
     start = time.time()
+
+    if loss_start_token > 0:
+        prefix = context_cpu[:, :loss_start_token].to("cuda:0")
+        out = model(input_ids=prefix, use_cache=True, logits_to_keep=1)
+        past = out.past_key_values
+        del prefix, out
+        total_nll = 0.0
+        total_tokens = 0
+        for token_pos in range(loss_start_token, context_cpu.shape[-1]):
+            input_token = context_cpu[:, token_pos : token_pos + 1].to("cuda:0")
+            target_token = targets_cpu[:, token_pos : token_pos + 1].to("cuda:0")
+            out = model(
+                input_ids=input_token,
+                past_key_values=past,
+                use_cache=True,
+                logits_to_keep=1,
+            )
+            past = out.past_key_values
+            loss_sum = F.cross_entropy(
+                out.logits[:, -1, :].float(),
+                target_token.reshape(-1),
+                reduction="sum",
+            )
+            total_nll += float(loss_sum.item())
+            total_tokens += int(target_token.numel())
+            del input_token, target_token, out, loss_sum
+        elapsed = time.time() - start
+        max_allocated = torch.cuda.max_memory_allocated() / 1024**3
+        max_reserved = torch.cuda.max_memory_reserved() / 1024**3
+        del past
+        torch.cuda.empty_cache()
+        return {
+            "nll": total_nll,
+            "tokens": total_tokens,
+            "ppl": float(math.exp(total_nll / total_tokens)),
+            "elapsed_sec": elapsed,
+            "max_allocated_gib": max_allocated,
+            "max_reserved_gib": max_reserved,
+            "eval_style": "decode_suffix_full_kv",
+        }
+
+    context = context_cpu.to("cuda:0")
+    targets = targets_cpu.to("cuda:0")
     logits = model(input_ids=context, use_cache=False).logits
     logits_for_loss = logits[:, loss_start_token:, :]
     targets_for_loss = targets[:, loss_start_token:]
@@ -195,6 +238,7 @@ def eval_full(model, ids: torch.Tensor, loss_start_token: int = 0) -> Dict[str, 
         "elapsed_sec": elapsed,
         "max_allocated_gib": torch.cuda.max_memory_allocated() / 1024**3,
         "max_reserved_gib": torch.cuda.max_memory_reserved() / 1024**3,
+        "eval_style": "single_forward_full_kv",
     }
 
 
@@ -234,6 +278,8 @@ def build_heterokv_cache(model, args):
         method_d_source_fusion_focus_only=args.method_d_source_fusion_focus_only,
         method_d_retrieve_focus_only=args.method_d_retrieve_focus_only,
         method_d_retrieve_focus_context_tokens=args.method_d_retrieve_focus_context_tokens,
+        method_d_source_gate_bypass_threshold=args.method_d_source_gate_bypass_threshold,
+        method_d_reuse_gate_bypass=args.method_d_reuse_gate_bypass,
         method_d_reuse_kv_cache=args.method_d_reuse_kv_cache,
         method_d_triton_scoring=args.method_d_triton_scoring,
         method_d_triton_scoring_batch_chunks=args.method_d_triton_scoring_batch_chunks,
@@ -420,6 +466,8 @@ def main() -> int:
     parser.add_argument("--method-d-source-fusion-focus-only", action="store_true")
     parser.add_argument("--method-d-retrieve-focus-only", action="store_true")
     parser.add_argument("--method-d-retrieve-focus-context-tokens", type=int, default=0)
+    parser.add_argument("--method-d-source-gate-bypass-threshold", type=float, default=0.0)
+    parser.add_argument("--method-d-reuse-gate-bypass", action="store_true")
     parser.add_argument("--method-d-reuse-kv-cache", action="store_true")
     parser.add_argument("--method-d-triton-scoring", action="store_true")
     parser.add_argument("--method-d-triton-scoring-batch-chunks", type=int, default=8)
@@ -500,6 +548,8 @@ def main() -> int:
             "source_fusion_focus_only": args.method_d_source_fusion_focus_only,
             "retrieve_focus_only": args.method_d_retrieve_focus_only,
             "retrieve_focus_context_tokens": args.method_d_retrieve_focus_context_tokens,
+            "source_gate_bypass_threshold": args.method_d_source_gate_bypass_threshold,
+            "reuse_gate_bypass": args.method_d_reuse_gate_bypass,
             "reuse_kv_cache": args.method_d_reuse_kv_cache,
             "triton_scoring": args.method_d_triton_scoring,
             "triton_scoring_batch_chunks": args.method_d_triton_scoring_batch_chunks,

@@ -1077,3 +1077,65 @@ Additional validation after the first deferred checkpoint:
 | 128K required seed7777, 1 trial/depth | `4/4` | `481.9 ms/step` | `21652 MiB` | `experiments/niah_128k_sourceaware_context3_deferred_seed7777_trial1_gpu2_20260528_wf2.json` |
 
 Combined deferred required-depth evidence is now `20/20` across seeds 4242, 6004, and 7777 under the 22 GiB cap and 30 GiB own-process fuse.
+
+## Workflow2 Round 22: Source-Aware Triton Scoring And Gate-Bypass Diagnostics
+
+New optimization candidates after deferred dequant:
+
+| Idea | Configuration | Result | Decision | Artifact |
+|---|---|---:|---|---|
+| Source gate bypass threshold 50 | context=3, deferred dequant, threshold too high to trigger | `1/1` 32K, `0` bypass events | No effect; do not use as evidence | `experiments/niah_32k_sourceaware_context3_srcgate50_smoke_seed6004_gpu2_20260528_wf2.json` |
+| Source gate bypass threshold 35 | context=3, all source-cue-selected chunks bypass HBM gate | `0/1` 32K, `229.1 ms/step` | Failed: fast but corrupts generation; do not promote | `experiments/niah_32k_sourceaware_context3_srcgate35_smoke_seed6004_gpu2_20260528_wf2.json` |
+| TTL reuse gate bypass | skip HBM gate only when selected chunks are TTL reuse hits | `4/4` 128K targeted, `747.4 ms/step` | Correct but slower than deferred main path; keep diagnostic-only | `experiments/niah_128k_sourceaware_context3_reusegate_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| Source-aware Triton batched scoring | stable context=3 + deferred dequant + `triton_int4_batch` scoring | `20/20` 128K required-depth across 3 seeds | Current latency candidate; still needs final PPL/baseline refresh | see below |
+
+Triton-scoring validation under the 22 GiB cap and 30 GiB process fuse:
+
+| Test | Result | Decode | Peak process memory | Artifact |
+|---|---:|---:|---:|---|
+| 32K smoke seed6004 | `1/1` | `338.5 ms/step` | `21506 MiB` | `experiments/niah_32k_sourceaware_context3_triton_score_smoke_seed6004_gpu2_20260528_wf2.json` |
+| 128K targeted seed6004 25/50 | `4/4` | `539.2 ms/step` | `21518 MiB` | `experiments/niah_128k_sourceaware_context3_triton_score_seed6004_depth25_50_trials2_gpu2_20260528_wf2.json` |
+| 128K required seed6004, 2 trials/depth | `8/8` | `438.4 ms/step` | `21654 MiB` | `experiments/niah_128k_sourceaware_context3_triton_score_seed6004_trials2_gpu2_20260528_wf2.json` |
+| 128K required seed4242, 2 trials/depth | `8/8` | `481.7 ms/step` | `21654 MiB` | `experiments/niah_128k_sourceaware_context3_triton_score_seed4242_trials2_gpu2_20260528_wf2.json` |
+| 128K required seed7777, 1 trial/depth | `4/4` | `603.1 ms/step` | `21654 MiB` | `experiments/niah_128k_sourceaware_context3_triton_score_seed7777_trial1_gpu2_20260528_wf2.json` |
+
+Aggregate comparison on the same 20 required-depth NIAH cases:
+
+| Path | Accuracy | Mean decode | Peak process memory |
+|---|---:|---:|---:|
+| Deferred dequant, torch scoring | `20/20` | `534.5 ms/step` | `21652 MiB` |
+| Deferred dequant, Triton batched scoring | `20/20` | `488.7 ms/step` | `21654 MiB` |
+
+Decision:
+
+- Promote source-aware Triton batched scoring as the current latency candidate, not as a final paper claim yet.
+- Keep failed gate-bypass variants recorded to avoid repeating them: full source-gate bypass is fast but semantically unsafe; TTL reuse-gate bypass is correct but slower in the 128K targeted run.
+- The accepted semantic configuration remains source-aware cue focus, token-level Method-D retrieval, `top_k=4`, `query_history=64`, `token_window=64`, TTL6 K/V reuse, context=3, and deferred dequant.
+- Before Workflow3, refresh PPL with the final candidate flags and run a fair latency/baseline table; optional 0% boundary remains a blocked claim.
+
+## Workflow2 Round 23: PPL Method Fix And Long-PPL Blocker
+
+Testing-method fix:
+
+- `scripts/run_ppl_eval.py` full baseline no longer computes suffix PPL by materializing all suffix logits at once when `loss_start_token > 0`.
+- The full baseline now uses a real FullKV decode-suffix path: prefix builds full KV cache, suffix computes one-token loss with `logits_to_keep=1`.
+- This avoids an artificial logits tensor OOM and is a fairer latency/PPL comparison to HeteroKV decode-suffix evaluation.
+
+PPL evidence after the fix:
+
+| Test | Result | PPL / Failure | Peak process memory | Artifact |
+|---|---:|---|---:|---|
+| 2K full baseline smoke | pass | FullKV PPL `4.5419`, eval style `decode_suffix_full_kv` | n/a | `experiments/ppl_full_decode_suffix_smoke_2k_20260528_wf2.json` |
+| 12K final flags, prefix 6144, tail 8192 | pass | FullKV `5.2026`, HeteroKV `5.1917`, delta `-0.21%` | `22774 MiB` | `experiments/ppl_12k_prefix6144_final_triton_context3_gpu2_20260528_wf2.json` |
+| 16K final flags, prefix 8192, tail 8192 | fail | HeteroKV OOM at manual attention `key_states.float()`, request `168 MiB` | about `22.4 GiB` process | `experiments/ppl_16k_prefix8192_final_triton_context3_heteroonly_gpu2_20260528_wf2.log` |
+| 16K BF16 attention diagnostic | fail | OOM at `repeat_kv(value)`, request `84 MiB` | about `22.5 GiB` process | `experiments/ppl_16k_prefix8192_final_triton_context3_bf16attn_heteroonly_gpu2_20260528_wf2.log` |
+| 14K tail6144 stress PPL | fail | OOM at manual attention `key_states.float()`, request `126 MiB` | about `22.4 GiB` process | `experiments/ppl_14k_prefix6144_tail6144_triton_context3_stress_heteroonly_expand_gpu2_20260528_wf2.log` |
+| 32K SDPA/GQA attention smoke | pass | `1/1`, `283.3 ms/step`; diagnostic only | `22346 MiB` | `experiments/niah_32k_sourceaware_context3_triton_score_sdpa_gqa_smoke_seed6004_gpu2_20260528_wf2.json` |
+| 14K tail6144 SDPA/GQA stress PPL | fail | OOM inside `scaled_dot_product_attention`, request `126 MiB` | about `22.4 GiB` process | `experiments/ppl_14k_prefix6144_tail6144_triton_context3_sdpa_gqa_heteroonly_gpu2_20260528_wf2.log` |
+
+Interpretation:
+
+- The 12K PPL result is valid but must be labeled as a no-DRAM/no-retrieval PPL point: `method_d_event_count=0`, `dram_entries=0`. It shows the final flags do not hurt medium-context PPL, but it does not prove long-PPL semantic recovery through DRAM retrieval.
+- Long PPL that crosses the HBM budget is currently blocked under the strict 22 GiB cap by attention temporary memory, not by NIAH retrieval correctness.
+- BF16 attention and SDPA/GQA diagnostics did not solve the long-PPL OOM. SDPA/GQA can pass a 32K NIAH smoke but still OOMs in 14K PPL stress at the 22 GiB cap.
+- Next credible route is not another threshold tweak; it is a true memory-efficient attention path that avoids materializing repeated K/V and large temporary score buffers while preserving source-fusion behavior, or a clearly separated 24 GiB supplementary PPL run.
