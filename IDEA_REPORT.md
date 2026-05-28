@@ -908,3 +908,56 @@ Current ranked ideas:
 | 3 | Attention-time source suppressor | Further reduce non-source retrieved influence without hard span filtering | Candidate if focus-only regresses broader tests |
 | 4 | Boundary-aware 0% NIAH handling | Address known prefix-boundary failure separately | Candidate, not in current claim |
 | 5 | Triton scoring | Mechanism branch only until it improves end-to-end latency | Defer |
+
+## Workflow 2.0 Round 18 Idea Outcomes
+
+### Implemented Candidate: Cue-Context Physical Retrieval
+
+Idea:
+
+- Pure answer-span retrieval can leave the model attending to isolated digits without the local cue that says those digits are the target.
+- Add `method_d_retrieve_focus_context_tokens` / `--method-d-retrieve-focus-context-tokens`.
+- Physical retrieval includes a small number of cue/context tokens before the answer span, while the focus mask still marks only the answer tokens.
+
+Why it should help:
+
+- It preserves the semantic anchor (`target_code=` or the tail of `The target code is`) without returning the whole 64-token noisy window.
+- It remains non-oracle: the cue strings come from the task template, not from the hidden answer span.
+
+Key implementation detail:
+
+- `context=3` covers the full `target_code=` cue in Qwen2.5 tokenization.
+- Returned source-cue windows are 22 tokens in this NIAH setup, down from 26 with `context=5` and 32 with `context=8`.
+
+Evidence:
+
+| Run | Result | Peak process memory | Decode | Artifact |
+|---|---:|---:|---:|---|
+| Stage1 CPU/GPU | `16 passed` / `16 passed` | small | n/a | `tests/test_heterokv_stage1.py` |
+| context=0, seed6004, 2 trials/depth | `7/8` | `21508 MiB` | `~572 ms/step` | `experiments/niah_128k_required_focus_only_ttl_seed6004_trials2_20260528_workflow2.json` |
+| context=5 targeted seed6004 25/50 | `4/4` | `21508 MiB` | `~700 ms/step` | `experiments/niah_128k_focus_context5_seed6004_depth25_50_trials2_20260528_154059.json` |
+| context=5 full seed6004 | `8/8` | `21652 MiB` | `~749 ms/step` | `experiments/niah_128k_required_focus_context5_seed6004_trials2_20260528_154813.json` |
+| context=5 full seed4242 | `8/8` | safe | n/a | `experiments/niah_128k_required_focus_context5_seed4242_trials2_20260528_160141.json` |
+| context=3 targeted seed6004 25/50 on GPU2 | `4/4` | `21508 MiB` | `~719 ms/step` | `experiments/niah_128k_focus_context3_seed6004_depth25_50_trials2_gpu2_20260528_164151.json` |
+| context=3 full seed6004 | `8/8` | `21652 MiB` | `~832 ms/step` | `experiments/niah_128k_required_focus_context3_seed6004_trials2_gpu2_20260528_164910.json` |
+| context=3 full seed4242 | `8/8` | `21652 MiB` | `~1051 ms/step` | `experiments/niah_128k_required_focus_context3_seed4242_trials2_gpu2_20260528_170258.json` |
+| context=3 seed7777, one trial/depth | `4/4` | `21652 MiB` | `~1001 ms/step` | `experiments/niah_128k_required_focus_context3_seed7777_trial1_gpu2_20260528_171645.json` |
+
+Invalid run:
+
+- `experiments/niah_128k_focus_context3_seed6004_depth25_50_trials2_20260528_163931.json` OOMed because GPU3 had another `ahr` VideoMME process using about 25.5 GiB in addition to the shared `lhj` process. It is recorded as a shared-GPU scheduling failure, not an algorithm result.
+
+Decision:
+
+- Promote `context=3` to the current quality candidate: it has 128K required-depth `20/20` across seeds `4242`, `6004`, and `7777`.
+- Do not mark Workflow3 ready: latency remains far above the relaxed FullKV SDPA reference, and PPL has not yet been refreshed for the new retrieval-context path.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Cue-context focus-only retrieval, context=3 | Improve answer fidelity with bounded source context | Current quality candidate |
+| 2 | Refresh PPL under context=3 | Check semantic-loss budget after new retrieval behavior | Next |
+| 3 | Same-GPU latency retest under lighter shared load | Measure context=0/3/5 fairly | Needed before speed claim |
+| 4 | Boundary-aware 0% NIAH | Address known prefix boundary failure | Candidate |
+| 5 | Fused dequant/value weighting | Only if quality/PPL hold and latency remains blocked | Requires separate permission |

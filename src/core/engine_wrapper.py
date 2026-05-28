@@ -82,6 +82,7 @@ class FusedHeteroCache(DynamicCache):
         method_d_source_cue_focus: bool = False,
         method_d_source_cue_answer_tokens: int = 8,
         method_d_retrieve_focus_only: bool = False,
+        method_d_retrieve_focus_context_tokens: int = 0,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
         method_d_reuse_kv_cache: bool = False,
@@ -138,6 +139,9 @@ class FusedHeteroCache(DynamicCache):
         self.method_d_source_cue_focus = bool(method_d_source_cue_focus)
         self.method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
         self.method_d_retrieve_focus_only = bool(method_d_retrieve_focus_only)
+        self.method_d_retrieve_focus_context_tokens = max(
+            0, int(method_d_retrieve_focus_context_tokens)
+        )
         self.method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self.method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
         self.method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
@@ -240,6 +244,9 @@ class FusedHeteroCache(DynamicCache):
             method_d_source_cue_focus=self.method_d_source_cue_focus,
             method_d_source_cue_answer_tokens=self.method_d_source_cue_answer_tokens,
             method_d_retrieve_focus_only=self.method_d_retrieve_focus_only,
+            method_d_retrieve_focus_context_tokens=(
+                self.method_d_retrieve_focus_context_tokens
+            ),
             method_d_reuse_ttl_tokens=self.method_d_reuse_ttl_tokens,
             method_d_reuse_source_threshold=self.method_d_reuse_source_threshold,
             method_d_reuse_kv_cache=self.method_d_reuse_kv_cache,
@@ -501,6 +508,9 @@ class FusedHeteroCache(DynamicCache):
             "source_fusion_focus_only": bool(self.method_d_source_fusion_focus_only),
             "source_cue_focus": bool(self.method_d_source_cue_focus),
             "retrieve_focus_only": bool(self.method_d_retrieve_focus_only),
+            "retrieve_focus_context_tokens": int(
+                self.method_d_retrieve_focus_context_tokens
+            ),
             "effective_source_fusion_alpha": float(
                 self._last_retrieved_source_fusion_alpha.get(layer_idx, 0.0)
             ),
@@ -987,6 +997,7 @@ def build_fused_cache(
     method_d_source_cue_focus: bool = False,
     method_d_source_cue_answer_tokens: int = 8,
     method_d_retrieve_focus_only: bool = False,
+    method_d_retrieve_focus_context_tokens: int = 0,
     method_d_reuse_ttl_tokens: int = 0,
     method_d_reuse_source_threshold: float = 0.0,
     method_d_reuse_kv_cache: bool = False,
@@ -1044,6 +1055,7 @@ def build_fused_cache(
         method_d_source_cue_focus=method_d_source_cue_focus,
         method_d_source_cue_answer_tokens=method_d_source_cue_answer_tokens,
         method_d_retrieve_focus_only=method_d_retrieve_focus_only,
+        method_d_retrieve_focus_context_tokens=method_d_retrieve_focus_context_tokens,
         method_d_reuse_ttl_tokens=method_d_reuse_ttl_tokens,
         method_d_reuse_source_threshold=method_d_reuse_source_threshold,
         method_d_reuse_kv_cache=method_d_reuse_kv_cache,

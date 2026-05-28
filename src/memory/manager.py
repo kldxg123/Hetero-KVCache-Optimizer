@@ -74,6 +74,7 @@ class HeteroKVManager:
         method_d_source_cue_focus: bool = False,
         method_d_source_cue_answer_tokens: int = 8,
         method_d_retrieve_focus_only: bool = False,
+        method_d_retrieve_focus_context_tokens: int = 0,
         method_d_reuse_ttl_tokens: int = 0,
         method_d_reuse_source_threshold: float = 0.0,
         method_d_reuse_kv_cache: bool = False,
@@ -154,6 +155,9 @@ class HeteroKVManager:
         self._method_d_source_cue_focus = bool(method_d_source_cue_focus)
         self._method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
         self._method_d_retrieve_focus_only = bool(method_d_retrieve_focus_only)
+        self._method_d_retrieve_focus_context_tokens = max(
+            0, int(method_d_retrieve_focus_context_tokens)
+        )
         self._method_d_reuse_ttl_tokens = max(0, int(method_d_reuse_ttl_tokens))
         self._method_d_reuse_source_threshold = max(0.0, float(method_d_reuse_source_threshold))
         self._method_d_reuse_kv_cache = bool(method_d_reuse_kv_cache)
@@ -557,6 +561,44 @@ class HeteroKVManager:
                 if chunk_ids[idx : idx + cue_len] == cue:
                     start = idx + cue_len
                     end = min(len(chunk_ids), start + answer_tokens)
+                    if start < end:
+                        mask[start:end] = True
+        return mask if bool(mask.any().item()) else None
+
+    def _build_method_d_source_cue_retrieval_mask(
+        self,
+        chunk_pos: torch.Tensor,
+        device: torch.device,
+    ) -> Optional[torch.Tensor]:
+        """Return a retrieval mask that may include cue/context tokens."""
+        if (
+            not self._method_d_source_cue_focus
+            or self._source_token_ids is None
+            or not self._source_cue_token_ids
+            or chunk_pos.numel() == 0
+        ):
+            return None
+        ids = self._source_token_ids
+        total = int(ids.numel())
+        pos_cpu = chunk_pos.detach().reshape(-1).cpu().long()
+        chunk_ids: List[Optional[int]] = []
+        for pos in pos_cpu.tolist():
+            pos = int(pos)
+            chunk_ids.append(int(ids[pos].item()) if 0 <= pos < total else None)
+        if not chunk_ids:
+            return None
+        mask = torch.zeros(len(chunk_ids), dtype=torch.bool, device=device)
+        answer_tokens = max(1, int(self._method_d_source_cue_answer_tokens))
+        context_tokens = max(0, int(self._method_d_retrieve_focus_context_tokens))
+        for cue in self._source_cue_token_ids:
+            cue_len = len(cue)
+            if cue_len == 0 or len(chunk_ids) < cue_len:
+                continue
+            for idx in range(0, len(chunk_ids) - cue_len + 1):
+                if chunk_ids[idx : idx + cue_len] == cue:
+                    answer_start = idx + cue_len
+                    end = min(len(chunk_ids), answer_start + answer_tokens)
+                    start = max(0, answer_start - context_tokens)
                     if start < end:
                         mask[start:end] = True
         return mask if bool(mask.any().item()) else None
@@ -1729,18 +1771,30 @@ class HeteroKVManager:
                     and focus_mask.numel() == restored_k.shape[-2]
                     and bool(focus_mask.any().item())
                 ):
-                    focus_indices = torch.nonzero(focus_mask, as_tuple=False).reshape(-1)
-                    restored_k = restored_k.index_select(-2, focus_indices)
-                    restored_v = restored_v.index_select(-2, focus_indices)
-                    chunk_pos = chunk_pos.index_select(0, focus_indices)
-                    focus_mask = torch.ones(
-                        restored_k.shape[-2], dtype=torch.bool, device=restored_k.device
+                    retrieval_mask = self._build_method_d_source_cue_retrieval_mask(
+                        chunk_pos=chunk_pos,
+                        device=restored_k.device,
                     )
+                    if retrieval_mask is None or retrieval_mask.numel() != focus_mask.numel():
+                        retrieval_mask = focus_mask
+                    retrieval_indices = torch.nonzero(
+                        retrieval_mask, as_tuple=False
+                    ).reshape(-1)
+                    restored_k = restored_k.index_select(-2, retrieval_indices)
+                    restored_v = restored_v.index_select(-2, retrieval_indices)
+                    chunk_pos = chunk_pos.index_select(0, retrieval_indices)
+                    focus_mask = focus_mask.index_select(0, retrieval_indices)
                     for item in self._last_method_d_selection.get(layer_idx, []):
                         if item.get("chunk_key") == chunk_key:
                             item["focus_only_retrieval"] = True
+                            item["focus_context_tokens"] = int(
+                                self._method_d_retrieve_focus_context_tokens
+                            )
                             item["focus_source"] = focus_source
                             item["focus_token_count"] = int(focus_mask.sum().item())
+                            item["retrieved_focus_token_count"] = int(
+                                restored_k.shape[-2]
+                            )
                             if chunk_pos.numel() > 0:
                                 item["retrieved_range"] = [
                                     int(chunk_pos[0].item()),

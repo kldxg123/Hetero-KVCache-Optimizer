@@ -1133,3 +1133,60 @@ Decision:
 - Keep focus-only retrieval as the next robustness candidate.
 - Do not promote Triton scoring to the main path; it is correct in these probes but slower end-to-end than PyTorch focus-only TTL.
 - Workflow3 remains blocked until the focus-only candidate is tested across broader seeds/trials and latency/PPL evidence is refreshed.
+
+## Workflow 2.0 Round 18: Cue-Context Focus-Only Retrieval
+
+Motivation:
+
+- A seed6004 broader run showed pure answer-span physical retrieval with TTL6 was not stable enough:
+  - `experiments/niah_128k_required_focus_only_ttl_seed6004_trials2_20260528_workflow2.json`
+  - Result: `7/8`, failed at depth `50%`, trial `0`, code `792275`.
+- Failure analysis showed all 512 Method-D tail events retrieved the source-cue span covering the needle. The remaining issue was not retrieval recall.
+- The model appeared to need a local cue/context anchor, not only isolated digit tokens.
+
+Implementation:
+
+- Added `method_d_retrieve_focus_context_tokens` and CLI flag `--method-d-retrieve-focus-context-tokens`.
+- Physical retrieval can include cue/context tokens before the answer span.
+- The focus mask still marks only the answer tokens, so focus bias/source fusion remains answer-directed.
+
+Tokenizer check:
+
+| Cue | Qwen2.5 token length |
+| --- | ---: |
+| `The target code is ` | `5` |
+| ` target_code=` | `3` |
+| `target_code=` | `3` |
+
+Validation:
+
+| Test | Result |
+| --- | ---: |
+| Stage1 CPU | `16 passed` |
+| Stage1 GPU3 | `16 passed` |
+
+Context sweep:
+
+| Config | Result | Peak process memory | Decode | Artifact |
+| --- | ---: | ---: | ---: | --- |
+| context=0, seed6004, required depths, 2 trials/depth | `7/8` | `21508 MiB` | `~572 ms/step` | `experiments/niah_128k_required_focus_only_ttl_seed6004_trials2_20260528_workflow2.json` |
+| context=5, targeted seed6004 depths 25/50 | `4/4` | `21508 MiB` | `~700 ms/step` | `experiments/niah_128k_focus_context5_seed6004_depth25_50_trials2_20260528_154059.json` |
+| context=5, full seed6004 | `8/8` | `21652 MiB` | `~749 ms/step` | `experiments/niah_128k_required_focus_context5_seed6004_trials2_20260528_154813.json` |
+| context=5, full seed4242 | `8/8` | safe | n/a | `experiments/niah_128k_required_focus_context5_seed4242_trials2_20260528_160141.json` |
+| context=3, targeted seed6004 depths 25/50, GPU2 | `4/4` | `21508 MiB` | `~719 ms/step` | `experiments/niah_128k_focus_context3_seed6004_depth25_50_trials2_gpu2_20260528_164151.json` |
+| context=3, full seed6004, GPU2 | `8/8` | `21652 MiB` | `~832 ms/step` | `experiments/niah_128k_required_focus_context3_seed6004_trials2_gpu2_20260528_164910.json` |
+| context=3, full seed4242, GPU2 | `8/8` | `21652 MiB` | `~1051 ms/step` | `experiments/niah_128k_required_focus_context3_seed4242_trials2_gpu2_20260528_170258.json` |
+| context=3, seed7777, one trial/depth, GPU2 | `4/4` | `21652 MiB` | `~1001 ms/step` | `experiments/niah_128k_required_focus_context3_seed7777_trial1_gpu2_20260528_171645.json` |
+
+Invalid run:
+
+- `experiments/niah_128k_focus_context3_seed6004_depth25_50_trials2_20260528_163931.json`
+- OOM was caused by shared GPU3 scheduling: another `ahr` VideoMME job used about `25.5 GiB`, leaving only `73 MiB` free when the HeteroKV run tried to allocate.
+- This is not counted as a HeteroKV memory-regression result.
+
+Current interpretation:
+
+- `context=3` is now the strongest quality candidate: required-depth 128K NIAH is `20/20` across seeds `4242`, `6004`, and `7777`.
+- HBM/process memory remains stable under the 22 GiB PyTorch cap and 30 GiB own-process fuse.
+- Latency is not settled because GPU2 was shared and decode times varied from `~832` to `~1051 ms/step`.
+- Workflow3 remains blocked until PPL is refreshed and a fairer latency run is obtained.
