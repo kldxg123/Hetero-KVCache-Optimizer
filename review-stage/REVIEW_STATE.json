@@ -32,18 +32,18 @@
     "Deferred dequant is an incremental latency improvement, not enough for the <=2x FullKV SDPA latency target; Workflow3 remains blocked."
   ],
   "latest_success": {
-    "artifact": "experiments/niah_128k_sourceaware_context3_deferred_seed6004_trials2_gpu2_20260528_wf2.json",
-    "summary": "Deferred dequant gate passed 128K seed6004 required-depth NIAH at 8/8 with peak process memory 21652 MiB and average decode about 559 ms/step."
+    "artifact": "experiments/niah_128k_sourceaware_context3_deferred_seed7777_trial1_gpu2_20260528_wf2.json",
+    "summary": "Deferred dequant completed the third-seed lightweight 128K required-depth check at 4/4; combined deferred required-depth evidence is 20/20."
   },
   "latest_failure": {
     "artifact": "experiments/niah_128k_sourceaware_context3_sink512_optional0_99_seed4242_trials2_gpu2_20260528_wf2.json",
     "summary": "Increasing Sink from 64 to 512 did not fix optional depth 0%; optional 0% remains a mechanistic boundary weakness rather than a memory issue."
   },
-  "active_hypothesis": "The strongest main path is source-aware cue focus plus token-level Method-D retrieval, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, retrieve_focus_context_tokens=3, and deferred dequant gating. This preserves quality and slightly improves latency, but Workflow3 remains blocked by latency versus FullKV SDPA and optional 0% boundary robustness.",
+  "active_hypothesis": "The strongest main path is source-aware cue focus plus token-level Method-D retrieval, selected-key/KV reuse TTL6, token_window64, query_history64, top_k4, retrieve_focus_context_tokens=3, and deferred dequant gating. It now has 20/20 required-depth NIAH evidence across three seeds under the 22 GiB cap, but Workflow3 remains blocked by latency versus FullKV SDPA and optional 0% boundary robustness.",
   "next_experiment": {
-    "name": "fair_latency_retest_or_next_deferred_optimization",
-    "purpose": "Retest deferred dequant on another seed or less-contended GPU, then look for further implementation-level latency reductions that preserve the same semantic signal.",
-    "safety": "Keep 22 GiB PyTorch cap and 30 GiB own-process fuse; do not run uncapped FullKV unless GPU is idle."
+    "name": "gate_cost_or_source_bypass_latency_probe",
+    "purpose": "Profile or test a source-aware gate bypass to reduce per-layer HBM gate dot-product cost without pruning top_k/qhist/layers.",
+    "safety": "Keep all new latency ideas separate from the accepted deferred PyTorch main result until they pass required-depth NIAH."
   },
   "last_local_process_update": "Implemented and validated deferred dequant gating; 128K seed6004 all required depths passed 8/8 with stable memory and modest latency improvement.",
   "round": 21,
@@ -54,6 +54,8 @@
     "Optional depth 99% passes under source-aware context=3, but optional depth 0% still fails even with Sink increased from 64 to 512.",
     "Deferred dequant gate is implemented: Method-D now scores/selects chunks and applies the HBM gate before materializing selected DRAM K/V, avoiding wasted dequantization when the gate rejects retrieval.",
     "Deferred dequant passed Stage1 16/16, a 32K real-model smoke, and 128K seed6004 required-depth testing at 8/8 with peak process memory about 21.1 GiB.",
-    "Deferred dequant improved seed6004 full required-depth average decode from the previous context3 K/V-cache run around 597 ms/step to about 559 ms/step in a shared-GPU run."
+    "Deferred dequant improved seed6004 full required-depth average decode from the previous context3 K/V-cache run around 597 ms/step to about 559 ms/step in a shared-GPU run.",
+    "Deferred dequant now has 20/20 required-depth 128K NIAH evidence across seeds 4242, 6004, and 7777, with process peaks about 21.1 GiB.",
+    "Deferred dequant seed4242 full required-depth run passed 8/8 with average decode about 536 ms/step; seed7777 one-trial/depth passed 4/4 with about 482 ms/step."
   ]
 }

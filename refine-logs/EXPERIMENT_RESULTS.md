@@ -1329,3 +1329,15 @@ Decision:
 - Promote deferred dequant gate as an implementation-level optimization because it preserves the accepted semantic configuration and passes real 128K required-depth testing.
 - This improves the current shared-GPU seed6004 full-depth decode average from the previous context3/KV-cache result (`~597 ms/step`) to `~559 ms/step`.
 - Latency is still far above the FullKV SDPA reference, so Workflow3 remains blocked.
+
+
+### Deferred dequant cross-seed follow-up
+
+Additional validation after the first deferred checkpoint:
+
+| Test | Result | Decode | Peak process memory | Artifact |
+|---|---:|---:|---:|---|
+| 128K required seed4242, 2 trials/depth | `8/8` | `536.1 ms/step` | `21652 MiB` | `experiments/niah_128k_sourceaware_context3_deferred_seed4242_trials2_gpu2_20260528_wf2.json` |
+| 128K required seed7777, 1 trial/depth | `4/4` | `481.9 ms/step` | `21652 MiB` | `experiments/niah_128k_sourceaware_context3_deferred_seed7777_trial1_gpu2_20260528_wf2.json` |
+
+Combined deferred required-depth evidence is now `20/20` across seeds 4242, 6004, and 7777 under the 22 GiB cap and 30 GiB own-process fuse.
