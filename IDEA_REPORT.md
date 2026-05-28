@@ -961,3 +961,59 @@ Current ranked ideas:
 | 3 | Same-GPU latency retest under lighter shared load | Measure context=0/3/5 fairly | Needed before speed claim |
 | 4 | Boundary-aware 0% NIAH | Address known prefix boundary failure | Candidate |
 | 5 | Fused dequant/value weighting | Only if quality/PPL hold and latency remains blocked | Requires separate permission |
+
+## Workflow 2.0 Round 19 Idea Outcomes
+
+### Revisited Idea: Retrieved K/V Cache Under Cue-Context Retrieval
+
+Earlier result:
+
+- Retrieved K/V cache reuse was rejected as a default after it scored `2/4` in an older 128K required-depth run.
+
+New hypothesis:
+
+- The earlier failure came from reusing noisy or semantically under-anchored retrieved windows.
+- With cue-context focus-only retrieval (`context=3`), the cached retrieved K/V window is smaller and more semantically stable.
+
+Evidence:
+
+| Run | Result | Decode | Peak process memory | Artifact |
+|---|---:|---:|---:|---|
+| context=3 + K/V cache targeted seed6004 25/50 | `4/4` | `~678 ms/step` | `21508 MiB` | `experiments/niah_128k_context3_kvcache_seed6004_depth25_50_trials2_gpu2_20260528_173924.json` |
+| context=3 + K/V cache full seed6004 | `8/8` | `~597 ms/step` | `21652 MiB` | `experiments/niah_128k_context3_kvcache_seed6004_trials2_gpu2_20260528_174634.json` |
+| context=3 + K/V cache full seed4242 | `8/8` | `~680 ms/step` | `21652 MiB` | `experiments/niah_128k_context3_kvcache_seed4242_trials2_gpu2_20260528_175954.json` |
+| context=3 + K/V cache seed7777, one trial/depth | `4/4` | `~551 ms/step` | `21508 MiB` | `experiments/niah_128k_context3_kvcache_seed7777_trial1_gpu2_20260528_181316.json` |
+
+Decision:
+
+- Promote `context=3 + method_d_reuse_kv_cache` to the current speed/quality candidate.
+- Keep it opt-in, not a global default.
+- It needs a fairer same-GPU latency comparison before any latency claim.
+
+### PPL Refresh
+
+Run:
+
+- `experiments/ppl_10k_prefix8192_gate35_nofusion_context3_gpu2_20260528_workflow2.json`
+
+Result:
+
+| Metric | FullKV | HeteroKV | Delta |
+|---|---:|---:|---:|
+| WikiText-2 10K decode-suffix PPL | `4.9011` | `4.9046` | `+0.07%` |
+
+Notes:
+
+- `retrieve_focus_only=True`, `retrieve_focus_context_tokens=3`.
+- `method_d_event_count=0`, as expected for the strict/no-fusion WikiText PPL configuration.
+- Process peak was `22608 MiB`, below the 30 GiB fuse.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Context=3 + retrieved K/V cache | Best current NIAH speed/quality tradeoff | Current candidate |
+| 2 | Fair latency retest on a less-contended GPU | Determine whether observed `~550-680 ms/step` is stable | Next |
+| 3 | Optional boundary 0% design | Expand claim scope beyond required depths | Candidate |
+| 4 | Larger/longer PPL suite | Strengthen semantic-loss evidence | Candidate |
+| 5 | Fused dequant/value weighting | Attack latency if quality remains stable | Requires separate permission |

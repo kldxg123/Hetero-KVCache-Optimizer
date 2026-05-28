@@ -1,5 +1,5 @@
 {
-  "current_round": 18,
+  "current_round": 19,
   "workflow": "workflow2",
   "workflow3_ready": false,
   "accepted_claims": [
@@ -13,7 +13,9 @@
     "Path A Triton retrieval scoring is approved and partially validated at the mechanism level: Stage1 passes, warm microbench matched PyTorch top-k after the batched reducer fix, and a 32K real-model NIAH smoke passed with triton_int4_batch backend logs.",
     "The GPU monitor harness was corrected: long Method-D runs must redirect stdout/stderr to a file or actively drain pipes, otherwise mechanism logs can fill an unconsumed pipe and falsely stall the child process.",
     "Source-cue answer-span physical retrieval is implemented as an opt-in mechanism and passed Stage1 CPU/GPU tests plus 32K and 128K real-model NIAH probes under the 22 GiB cap.",
-    "Cue-context focus-only retrieval with context=3 passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, with process peaks about 21.1 GiB and max_reserved about 20.65 GiB."
+    "Cue-context focus-only retrieval with context=3 passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, with process peaks about 21.1 GiB and max_reserved about 20.65 GiB.",
+    "Under context=3, retrieved K/V cache reuse was retested and passed 128K required-depth NIAH on seeds 4242, 6004, and 7777: 20/20, with decode around 551-680 ms/step on the shared GPU2 runs.",
+    "The 10K WikiText-2 PPL suffix test was refreshed with retrieve_focus_only=True and retrieve_focus_context_tokens=3: FullKV PPL 4.9011 vs HeteroKV PPL 4.9046, +0.07%."
   ],
   "blocked_claims": [
     "Workflow3 / paper-writing is not ready: latency remains far above a <=2x FullKV SDPA decode baseline.",
@@ -24,21 +26,21 @@
     "Retrieved K/V cache reuse is not accepted as a default optimization: it improved a 32K smoke runtime but 128K required-depth accuracy was 2/4, so it is now behind method_d_reuse_kv_cache and defaults off.",
     "A new seed6004 one-trial required-depth pairing exposed a main-path robustness gap: PyTorch scoring with selected-key reuse found the needle chunk but still scored only 2/4.",
     "Path A is retrieval scoring only; fused V weighting / fused attention output remains unimplemented and unclaimed.",
-    "Cue-context focus-only retrieval is not yet paper-grade complete: PPL has not been refreshed for the new path and latency remains much slower than the relaxed FullKV SDPA reference."
+    "Latency remains much slower than the relaxed FullKV SDPA reference and was measured under shared-GPU contention, so Workflow3 is still blocked."
   ],
   "latest_success": {
-    "artifact": "experiments/niah_128k_required_focus_context3_seed7777_trial1_gpu2_20260528_171645.json",
-    "summary": "Cue-context focus-only retrieval with context=3 completed the third-seed 128K required-depth check, giving 20/20 across seeds 4242, 6004, and 7777 under the 30 GiB own-process fuse."
+    "artifact": "experiments/niah_128k_context3_kvcache_seed7777_trial1_gpu2_20260528_181316.json",
+    "summary": "Context=3 plus retrieved K/V cache reuse completed the third-seed 128K required-depth check, giving 20/20 across seeds 4242, 6004, and 7777 with stable memory."
   },
   "latest_failure": {
     "artifact": "experiments/niah_128k_required_focus_only_ttl_seed6004_trials2_20260528_workflow2.json",
     "summary": "Pure answer-span physical retrieval with context=0 scored 7/8 on seed6004 broader required-depth testing, motivating cue-context retrieval."
   },
-  "active_hypothesis": "The strongest current quality candidate is source-aware cue focus plus token-level Method-D retrieval, selected-key reuse TTL6, token_window64, source-cue focus-only physical retrieval, and retrieve_focus_context_tokens=3. It fixes the answer-generation failure class while keeping retrieved source windows bounded, but latency/PPL still block Workflow3.",
+  "active_hypothesis": "The strongest current candidate is source-aware cue focus plus token-level Method-D retrieval, selected-key reuse TTL6, token_window64, source-cue focus-only physical retrieval, retrieve_focus_context_tokens=3, and opt-in retrieved K/V cache reuse. It fixes the answer-generation failure class while improving decode latency, but the <=2x latency claim is still blocked.",
   "next_experiment": {
-    "name": "context3_ppl_and_latency_refresh",
-    "purpose": "Refresh WikiText-2 PPL and obtain a fairer same-GPU latency comparison for the context=3 candidate; only then decide whether optimization or Workflow3 is appropriate.",
+    "name": "fair_latency_or_next_latency_optimization",
+    "purpose": "Obtain a fairer same-GPU latency comparison for context=3 + K/V cache; if it remains far above target, continue with structural latency optimizations rather than Workflow3.",
     "safety": "Continue using no-pipe monitoring for long GPU runs; keep the 30 GiB own-process fuse; avoid GPU3 while the VideoMME job remains active."
   },
-  "last_local_process_update": "Workflow2 implemented cue-context focus-only retrieval, validated context=3 across three seeds for 128K required-depth NIAH, identified a shared-GPU OOM as invalid scheduling noise, and kept Workflow3 blocked pending PPL and latency refresh."
+  "last_local_process_update": "Workflow2 validated context=3 + retrieved K/V cache across three seeds, refreshed the 10K PPL check, and kept Workflow3 blocked because latency is still the unresolved acceptance item."
 }

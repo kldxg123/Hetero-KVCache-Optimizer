@@ -1190,3 +1190,68 @@ Current interpretation:
 - HBM/process memory remains stable under the 22 GiB PyTorch cap and 30 GiB own-process fuse.
 - Latency is not settled because GPU2 was shared and decode times varied from `~832` to `~1051 ms/step`.
 - Workflow3 remains blocked until PPL is refreshed and a fairer latency run is obtained.
+
+## Workflow 2.0 Round 19: Context=3 Plus Retrieved K/V Cache
+
+Status: K/V cache reuse is rehabilitated only under the cue-context retrieval path.
+
+Background:
+
+- Earlier retrieved K/V cache reuse improved a 32K smoke runtime but failed 128K required-depth quality (`2/4`), so it was rejected as a default.
+- After cue-context physical retrieval, the retrieved windows are smaller and less noisy, so the cache-reuse idea was retested.
+
+Results:
+
+| Run | Accuracy | Decode | Peak process memory | Max reserved | K/V cache hits | Artifact |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| context=3 + K/V cache targeted seed6004 depths 25/50 | `4/4` | `~678 ms/step` | `21508 MiB` | `20.6465 GiB` | `1312` | `experiments/niah_128k_context3_kvcache_seed6004_depth25_50_trials2_gpu2_20260528_173924.json` |
+| context=3 + K/V cache full seed6004 | `8/8` | `~597 ms/step` | `21652 MiB` | `20.6465 GiB` | `2588` | `experiments/niah_128k_context3_kvcache_seed6004_trials2_gpu2_20260528_174634.json` |
+| context=3 + K/V cache full seed4242 | `8/8` | `~680 ms/step` | `21652 MiB` | `20.6465 GiB` | `2527` | `experiments/niah_128k_context3_kvcache_seed4242_trials2_gpu2_20260528_175954.json` |
+| context=3 + K/V cache seed7777 one trial/depth | `4/4` | `~551 ms/step` | `21508 MiB` | `20.6465 GiB` | `1390` | `experiments/niah_128k_context3_kvcache_seed7777_trial1_gpu2_20260528_181316.json` |
+
+Interpretation:
+
+- Context=3 + retrieved K/V cache passes required-depth 128K NIAH `20/20` across seeds `4242`, `6004`, and `7777`.
+- It is currently the best speed/quality candidate, but remains opt-in.
+- Latency still does not meet the `<=2x` FullKV SDPA target, and the GPU was shared, so the speed claim remains blocked.
+
+### Context=3 PPL Refresh
+
+Artifact:
+
+- `experiments/ppl_10k_prefix8192_gate35_nofusion_context3_gpu2_20260528_workflow2.json`
+
+Configuration:
+
+- `max_tokens=10240`
+- `eval_prefix_tokens=8192`
+- `attn_implementation=sdpa`
+- 22 GiB PyTorch cap, 30 GiB process fuse
+- `retrieve_focus_only=True`
+- `retrieve_focus_context_tokens=3`
+- strict/no-fusion Method-D PPL configuration
+
+Result:
+
+| Metric | FullKV | HeteroKV | Delta |
+| --- | ---: | ---: | ---: |
+| WikiText-2 PPL | `4.9011` | `4.9046` | `+0.07%` |
+
+Memory:
+
+- FullKV max reserved: `21.3438 GiB`.
+- HeteroKV max reserved: `21.5801 GiB`.
+- nvidia-smi process peak: `22608 MiB`.
+
+Notes:
+
+- `method_d_event_count=0`, consistent with the strict PPL setup.
+- This refresh confirms the new context flag does not break the existing 10K PPL result.
+- It still does not constitute broad 128K language-modeling evidence.
+
+Workflow status:
+
+- Quality: strong for required-depth NIAH.
+- PPL: refreshed and within budget on the 10K suffix sample.
+- Memory: stable under the 22 GiB cap and 30 GiB process fuse.
+- Latency: still the main blocker for Workflow3.
