@@ -1595,3 +1595,40 @@ Interpretation:
 - Including the seed6004 25/50 ablation rows, the monitored driver-based SourceCopy exactness evidence is `20/20`; however seed6004 still lacks a full 25/50/75/90 2-trial driver rerun.
 - This result is strong NIAH exact-copy evidence under the 22 GiB cap and 30 GiB fuse, but remains separate from the pure dot-product retrieval claim.
 - Latency breakdown and fair baseline refresh remain the main blockers before asking about Workflow3.
+
+
+## Workflow2 Round 29 Results: SourceCopy Required-Depth Robustness, Seed6004
+
+Run:
+
+| Variant | Seed | Depths | Trials | Result | Monitor peak | Max reserved | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| source-aware retrieval + SourceCopy boost20 | `6004` | 25/50/75/90 | 2 each | `8/8` | `21.8262 GiB` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_boost20_seed6004_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Elapsed |
+| ---: | ---: | --- | ---: | ---: |
+| 25% | 0 | `847754` | True | `76.36s` |
+| 25% | 1 | `690144` | True | `76.13s` |
+| 50% | 0 | `792275` | True | `71.20s` |
+| 50% | 1 | `439778` | True | `63.06s` |
+| 75% | 0 | `899516` | True | `74.59s` |
+| 75% | 1 | `618089` | True | `75.27s` |
+| 90% | 0 | `205264` | True | `73.30s` |
+| 90% | 1 | `259182` | True | `71.10s` |
+
+Shared mechanism evidence:
+
+- `max_hbm_tokens=12352`
+- `dram_entries=1680`
+- `method_d_event_count=512` per row
+- monitor did not kill the run
+- total elapsed `608.1s`, mean row elapsed `72.6s`
+
+Interpretation:
+
+- The driver-based SourceCopy-assisted required-depth matrix is now complete for seeds `4242`, `7777`, and `6004`: `24/24` exact answers across 128K 25/50/75/90 depths, 2 trials per depth.
+- The same monitored envelope was used throughout: 22 GiB PyTorch cap and 30 GiB own-process fuse, with peak process memory `21.8262 GiB`.
+- This supports the 128K NIAH exact-copy demonstration path, but SourceCopy remains explicitly separate from pure source-aware token-level dot-product retrieval.
+- Workflow2 should now focus on latency breakdown, fair baseline refresh, and paper-grade presentation of the no-SourceCopy vs SourceCopy boundary.

@@ -1330,3 +1330,37 @@ Decision:
 - Together with the driver-based seed6004 25%/50% ablation (`4/4`), the monitored SourceCopy exactness evidence is `20/20`, but seed6004 is not yet a full required-depth 2-trial seed in this driver format.
 - Keep the claim boundary strict: this is an experimental exact-copy reranker layered on source-aware retrieval, not the pure token-level dot-product retrieval result.
 - Next automatic Workflow2 step should prioritize latency breakdown and fair baseline refresh, unless GPU safety suggests a seed6004 full required-depth driver rerun is cheaper and more useful first.
+
+## Workflow2 Round 29: SourceCopy Required-Depth Robustness, Third Full Seed
+
+Extended driver-based robustness run:
+
+| Path | Seed | Length | Depths / Trials | Accuracy | Peak process memory | Monitor killed | Artifact |
+|---|---:|---:|---|---:|---:|---:|---|
+| Source-aware retrieval + SourceCopy boost20 | `6004` | 128K | 25%/50%/75%/90%, 2 trials each | `8/8` | `21.8262 GiB` | False | `experiments/niah_128k_required4_trials2_sourcecopy_boost20_seed6004_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Row elapsed |
+|---:|---:|---|---:|---:|
+| 25% | 0 | `847754` | True | `76.36s` |
+| 25% | 1 | `690144` | True | `76.13s` |
+| 50% | 0 | `792275` | True | `71.20s` |
+| 50% | 1 | `439778` | True | `63.06s` |
+| 75% | 0 | `899516` | True | `74.59s` |
+| 75% | 1 | `618089` | True | `75.27s` |
+| 90% | 0 | `205264` | True | `73.30s` |
+| 90% | 1 | `259182` | True | `71.10s` |
+
+Mechanism/memory:
+
+- `max_reserved_gib=21.3262`, monitor peak `21.8262 GiB`.
+- `max_hbm_tokens=12352`, `dram_entries=1680`, `method_d_event_count=512` for each row.
+- Total run time `608.1s`; mean row elapsed `72.6s`.
+
+Decision:
+
+- Driver-based SourceCopy-assisted required-depth NIAH is now `24/24` across seeds `4242`, `7777`, and `6004`, with 2 trials per required depth under the 22 GiB cap and 30 GiB own-process fuse.
+- This is the strongest current 128K exact-copy task evidence, but it remains a separate experimental exactness reranker result.
+- The pure source-aware retrieval without SourceCopy remains weaker on the hard same-case ablation (`3/4` on 25%/50% trials2), which should be reported rather than hidden.
+- Next automatic Workflow2 priority shifts to latency breakdown and fair baseline refresh, because quality and memory evidence for the SourceCopy-assisted path are now strong enough for this stage.

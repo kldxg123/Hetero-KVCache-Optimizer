@@ -87,3 +87,21 @@ Update after Round 28:
   - Commit/sync this evidence.
   - Retry GitHub push when available.
   - Check GPU safety, then run latency breakdown/fair baseline refresh or a seed6004 full required-depth driver rerun.
+
+Update after Round 29:
+
+- SourceCopy robustness run completed through the workflow driver:
+  - Seed `6004`, 128K, depths 25/50/75/90, 2 trials each.
+  - Result `8/8`, monitor peak `21.8262 GiB`, no monitor kill.
+- Driver-based SourceCopy-assisted required-depth matrix is now complete:
+  - Seed4242 required-depth trials2: `8/8`.
+  - Seed7777 required-depth trials2: `8/8`.
+  - Seed6004 required-depth trials2: `8/8`.
+  - Aggregate: `24/24`.
+- Claim boundary:
+  - This is strong exact-copy NIAH evidence for the SourceCopy-assisted path.
+  - It is still not the pure dot-product retrieval result.
+  - Pure source-aware retrieval without SourceCopy remains documented as weaker on the same hard ablation.
+- Next automatic priority:
+  - Commit/sync/push this evidence.
+  - Run latency breakdown and fair baseline refresh under the same 22 GiB memory envelope, if GPU safety permits.
