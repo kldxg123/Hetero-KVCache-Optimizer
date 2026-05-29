@@ -41,6 +41,11 @@ The strongest NIAH result uses source-aware prefiltering. This is valid as a
 task-aware approximate cache mechanism, but it cannot be sold as pure
 Query-Key dot-product retrieval.
 
+There is already a controlled same-case ablation where source-aware retrieval
+with SourceCopy disabled reaches 3/4 and SourceCopy boost20 reaches 4/4 on
+128K 25%/50% trials. This is useful evidence, but still not enough for a broad
+pure-retrieval claim.
+
 Required fix before a strong method claim:
 
 - Add a clean table with pure dot-product-only retrieval, even if weaker.

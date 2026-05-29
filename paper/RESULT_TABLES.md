@@ -94,6 +94,28 @@ Claim boundary:
 - This is not a 128K PPL claim.
 - This does not validate SourceCopy/source-prefilter for general-language PPL.
 
+## Source-Aware Versus Exact-Copy Reranker Ablation
+
+This table is included to prevent overclaiming the source-aware NIAH result as
+pure dot-product retrieval. Both rows use the same 128K memory envelope and are
+copy-task variants, but the SourceCopy row adds an exact-string reranker on top
+of the retrieval substrate.
+
+| Variant | Length | Depths / Trials | Accuracy | Peak Process Memory | Max Reserved | Active HBM Tokens | DRAM Entries | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Source-aware retrieval, SourceCopy disabled | 128K | 25/50, 2 each | 3/4 | 21.8242 GiB | 21.3262 GiB | 12352 | 1680 | `experiments/niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json` |
+| Source-aware retrieval + SourceCopy boost20 | 128K | 25/50, 2 each | 4/4 | 21.8262 GiB | 21.3262 GiB | 12352 | 1680 | `experiments/niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json` |
+
+Interpretation:
+
+- Source-aware retrieval without SourceCopy is a real non-oracle ablation but
+  is weaker on this hard same-case 25/50 setting.
+- SourceCopy improves exact string output without changing the memory envelope.
+- This supports a two-layer method description: retrieval locates relevant
+  source spans, while SourceCopy is a task-specific exact-string reranker.
+- This table must not be used to claim pure KV-only dot-product retrieval
+  solves 128K NIAH.
+
 ## Optional Edge Depths
 
 | Variant | Seeds | Depths | Trials | Correct | Depth 0% | Depth 99% | Peak | Artifact |
