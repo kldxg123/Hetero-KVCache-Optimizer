@@ -210,3 +210,29 @@ Update after Round 33:
   - Commit Round 33 code/docs locally on the remote.
   - Push if GitHub authentication/network works; if not, record auth failure and keep remote local commits.
   - Continue Workflow2 with either a latency-ratio optimization or prepare a strict paper-claim split where source-aware NIAH and SourceCopy-disabled PPL are presented separately.
+
+Update after Round 34:
+
+- Late-layer source-prefilter ablation found a latency-target candidate:
+  - Layers 12-27: seed6004 25/50 trials2 `4/4`, `131.2 ms/step`.
+  - Layers 16-27: seed6004 25/50 trials2 `4/4`, `118.5 ms/step`.
+  - Layers 20-27: seed6004 25/50 trials2 `4/4`, `105.2 ms/step`.
+  - Layers 21-27: seed6004 25/50 trials2 `4/4`, `104.9 ms/step`.
+  - Layers 22-27: seed6004 25/50 trials2 `4/4`, `101.0 ms/step`.
+- Promoted candidate:
+  - Source-prefilter TTL24, layers 22-27.
+  - Full required-depth seeds `6004`, `4242`, `7777`: aggregate `24/24`.
+  - Depth-wise: `6/6` at 25/50/75/90.
+  - Aggregate mean decode: `98.12 ms/step`.
+  - Ratio vs wide-memory FullKV SDPA A100 reference `52.25 ms/step`: `1.88x`.
+  - Mean prefill: `48.95s`; mean elapsed: `51.41s`.
+  - Method-D events: `150` per row.
+  - Source prefilter evidence: `(1, 60)` chunks.
+  - Own-process peak: `22348 MB`; no 30 GiB fuse trigger.
+- Claim boundary:
+  - This is the first Workflow2 result that satisfies the original latency threshold, but only for the source-aware NIAH path.
+  - It must not be described as pure dot-product-only retrieval.
+  - The general-language PPL claim remains Round 31 with SourceCopy disabled.
+- Current Workflow3 readiness:
+  - Strong enough to start drafting a paper-style result section for the source-aware NIAH path, subject to user approval.
+  - Recommended before formal Workflow3: optional 0%/99% depths for the promoted 22-27 path and a compact generate compatibility rerun under the promoted configuration.

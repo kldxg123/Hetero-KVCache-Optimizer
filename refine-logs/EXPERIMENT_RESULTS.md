@@ -1815,3 +1815,58 @@ Interpretation:
 - It should be described as source-aware exact-copy assistance plus token-level dot-product retrieval, not as pure dot-product retrieval.
 - The original latency target is not yet met: `3.22x` vs FullKV wide-memory A100 reference exceeds `2x`.
 - PPL evidence remains the Round 31 SourceCopy-disabled WikiText-2 result; source-prefilter did not replace that general-language claim.
+
+
+## Workflow2 Round 34 Results: Late-Layer Source-Prefilter
+
+Status: current best source-aware NIAH path; required-depth multi-seed accuracy and latency targets passed.
+
+Layer-range ablation ladder:
+
+| Layer range | Seed | Depths | Trials | Result | Mean decode | Ratio vs `52.25 ms/step` | Events / row | Monitor peak | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 12-27 | `6004` | 25/50 | 2 each | `4/4` | `131.2 ms/step` | `2.51x` | `400` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers12_27_seed6004_gpu3_20260529_auto.json` |
+| 16-27 | `6004` | 25/50 | 2 each | `4/4` | `118.5 ms/step` | `2.27x` | `300` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers16_27_seed6004_gpu3_20260529_auto.json` |
+| 20-27 | `6004` | 25/50 | 2 each | `4/4` | `105.2 ms/step` | `2.01x` | `200` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers20_27_seed6004_gpu3_20260529_auto.json` |
+| 21-27 | `6004` | 25/50 | 2 each | `4/4` | `104.9 ms/step` | `2.01x` | `175` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers21_27_seed6004_gpu3_20260529_auto.json` |
+| 22-27 | `6004` | 25/50 | 2 each | `4/4` | `101.0 ms/step` | `1.93x` | `150` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.json` |
+
+Promoted 22-27 full-depth validation:
+
+| Seed | GPU | Depths | Trials | Result | Mean decode | Median decode | Ratio | Monitor peak | Artifact |
+| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `6004` | 3 | 25/50/75/90 | 2 each | `8/8` | `97.85 ms/step` | `97.80 ms/step` | `1.87x` | `22348 MB` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.json` |
+| `4242` | 2 | 25/50/75/90 | 2 each | `8/8` | `98.45 ms/step` | `98.46 ms/step` | `1.88x` | `22348 MB` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed4242_gpu2_20260529_auto.json` |
+| `7777` | 3 | 25/50/75/90 | 2 each | `8/8` | `98.07 ms/step` | `97.93 ms/step` | `1.88x` | `22348 MB` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed7777_gpu3_20260529_auto.json` |
+
+Aggregate:
+
+| Metric | Value |
+| --- | ---: |
+| Accuracy | `24/24` |
+| Depth 25% | `6/6` |
+| Depth 50% | `6/6` |
+| Depth 75% | `6/6` |
+| Depth 90% | `6/6` |
+| Mean decode | `98.12 ms/step` |
+| Median decode | `97.98 ms/step` |
+| Decode std | `0.85 ms/step` |
+| Mean prefill | `48.95s` |
+| Mean elapsed | `51.41s` |
+| Ratio vs FullKV SDPA A100 reference | `1.88x` |
+
+Mechanism and memory evidence:
+
+- Retrieval active layers: 22-27 only.
+- Method-D events: `150` per row.
+- Source prefilter tail: `(1, 60)` chunks.
+- Own-process monitor peak: `22348 MB` for all three full-depth runs.
+- No 30 GiB fuse trigger.
+- Parallel seed4242/GPU2 and seed7777/GPU3 used unique output paths and did not clobber results.
+- Final `nvidia-smi` showed GPUs idle.
+
+Interpretation:
+
+- The late-layer source-prefilter path meets the latency target for the source-aware NIAH setting: `1.88x <= 2x`.
+- This does not supersede the pure dot-product or SourceCopy-disabled PPL boundaries.
+- Before Workflow3/paper writing, remaining evidence to consider: optional 0%/99% depths for the promoted path, a short generate compatibility rerun under the promoted config, and a paper table that clearly separates source-aware NIAH from general-language PPL.

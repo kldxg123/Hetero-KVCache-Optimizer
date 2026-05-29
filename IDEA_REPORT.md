@@ -1550,3 +1550,54 @@ Decision:
 - This is the strongest current source-cue/NIAH path: correct, memory-safe, and much faster than previous TTL-only variants.
 - It is still not a claim that pure token-level dot-product alone solves NIAH; the SourceCopy/source-prefilter path must remain labeled as source-aware exact-copy assistance.
 - Workflow3 is still not ready under the original latency criterion: `168.1 / 52.25 = 3.22x` versus the wide-memory A100 FullKV SDPA reference, above the `<=2x` target.
+
+## Workflow2 Round 34: Late-Layer Source-Prefilter Candidate
+
+Automatic review target:
+
+- Reduce retrieval overhead after Round 33 by limiting source-aware Method-D retrieval to late decoder layers.
+- Preserve the same 22 GiB PyTorch cap, 30 GiB own-process fuse, source-prefilter mechanism, and `max_new_tokens=24`.
+- Do not claim success from a small 25/50 smoke; promote only after required-depth multi-seed validation.
+
+Idea ranking after layer-range ablations:
+
+| Rank | Idea | Small result | Full-depth result | Decision |
+|---:|---|---|---|---|
+| 1 | Source-prefilter TTL24, layers 22-27 | seed6004 25/50 `4/4`, `101.0 ms/step`, `1.93x` | 3 seeds required-depth `24/24`, `98.1 ms/step`, `1.88x` | Promote as current best source-aware NIAH candidate |
+| 2 | Source-prefilter TTL24, layers 20-27 | seed6004 25/50 `4/4`, `105.2 ms/step`, `2.01x` | not needed after 22-27 passed | Keep as conservative fallback |
+| 3 | Source-prefilter TTL24, layers 21-27 | seed6004 25/50 `4/4`, `104.9 ms/step`, `2.01x` | not promoted | Slightly worse than 22-27 in the smoke run |
+| 4 | Source-prefilter TTL24, layers 16-27 | seed6004 25/50 `4/4`, `118.5 ms/step`, `2.27x` | not promoted | Correct but too slow |
+| 5 | Source-prefilter TTL24, layers 12-27 | seed6004 25/50 `4/4`, `131.2 ms/step`, `2.51x` | not promoted | Correct but too slow |
+
+Small ablation evidence:
+
+| Layer range | Seed | Depths / Trials | Accuracy | Mean decode | Event count / row | Peak process memory | Artifact |
+|---|---:|---|---:|---:|---:|---:|---|
+| 12-27 | `6004` | 25/50, 2 each | `4/4` | `131.2 ms/step` | `400` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers12_27_seed6004_gpu3_20260529_auto.json` |
+| 16-27 | `6004` | 25/50, 2 each | `4/4` | `118.5 ms/step` | `300` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers16_27_seed6004_gpu3_20260529_auto.json` |
+| 20-27 | `6004` | 25/50, 2 each | `4/4` | `105.2 ms/step` | `200` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers20_27_seed6004_gpu3_20260529_auto.json` |
+| 21-27 | `6004` | 25/50, 2 each | `4/4` | `104.9 ms/step` | `175` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers21_27_seed6004_gpu3_20260529_auto.json` |
+| 22-27 | `6004` | 25/50, 2 each | `4/4` | `101.0 ms/step` | `150` | `22348 MB` | `experiments/niah_128k_depth25_50_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.json` |
+
+Promoted full-depth evidence:
+
+| Seed | GPU | Depths / Trials | Accuracy | Mean decode | Ratio vs FullKV `52.25 ms/step` | Mean elapsed | Monitor peak | Artifact |
+|---:|---:|---|---:|---:|---:|---:|---:|---|
+| `6004` | 3 | 25/50/75/90, 2 each | `8/8` | `97.85 ms/step` | `1.87x` | `50.88s` | `22348 MB` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.json` |
+| `4242` | 2 | 25/50/75/90, 2 each | `8/8` | `98.45 ms/step` | `1.88x` | included in aggregate | `22348 MB` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed4242_gpu2_20260529_auto.json` |
+| `7777` | 3 | 25/50/75/90, 2 each | `8/8` | `98.07 ms/step` | `1.88x` | included in aggregate | `22348 MB` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed7777_gpu3_20260529_auto.json` |
+
+Aggregate:
+
+- Accuracy: `24/24`, with depth-wise `6/6` at 25%, 50%, 75%, and 90%.
+- Mean decode: `98.12 ms/step`; median `97.98 ms/step`; std `0.85 ms/step`.
+- Ratio vs wide-memory FullKV SDPA A100 reference: `1.88x`, meeting the `<=2x` latency target for this source-aware path.
+- Mean prefill: `48.95s`; mean elapsed: `51.41s`.
+- Mechanism: only layers 22-27 run source-prefiltered retrieval; each row has `150` Method-D events and tail logs show source prefilter `(1, 60)`.
+- Memory: own-process peak `22348 MB`; no 30 GiB monitor trigger; final GPUs idle.
+
+Claim boundary:
+
+- This is a source-aware exact-copy/NIAH candidate, not pure dot-product-only retrieval.
+- The latency target is now met for the source-prefiltered late-layer path on A100 under the 22 GiB PyTorch cap and 30 GiB own-process fuse.
+- The PPL claim still relies on the separate SourceCopy-disabled WikiText-2 result from Round 31; late-layer SourceCopy should not be used to claim general-language PPL quality unless tested separately.
