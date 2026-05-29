@@ -57,7 +57,7 @@ def bar_chart(path: pathlib.Path, title: str, labels: list[str], values: list[fl
         body.append(rect(x, y, bar_w, h, colors[i % len(colors)]))
         body.append(text(x + bar_w / 2, y - 8, f"{value:g}{unit}", 13, "middle"))
         body.append(text(x + bar_w / 2, top + chart_h + 28, label, 13, "middle"))
-    path.write_text(svg(width, height, body), encoding="utf-8")
+    path.write_text(svg(width, height, body), encoding="utf-8", newline="\n")
 
 
 def grouped_accuracy() -> dict:
@@ -127,7 +127,11 @@ def main() -> None:
             "relative_delta": ppl["relative_ppl_delta"],
         },
     }
-    (DATA_DIR / "workflow3_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (DATA_DIR / "workflow3_summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
     acc = summary["required_niah"]
     bar_chart(
