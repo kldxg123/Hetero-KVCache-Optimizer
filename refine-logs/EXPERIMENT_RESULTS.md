@@ -1632,3 +1632,39 @@ Interpretation:
 - The same monitored envelope was used throughout: 22 GiB PyTorch cap and 30 GiB own-process fuse, with peak process memory `21.8262 GiB`.
 - This supports the 128K NIAH exact-copy demonstration path, but SourceCopy remains explicitly separate from pure source-aware token-level dot-product retrieval.
 - Workflow2 should now focus on latency breakdown, fair baseline refresh, and paper-grade presentation of the no-SourceCopy vs SourceCopy boundary.
+
+
+## Workflow2 Round 30 Results: TTL12 Latency Candidate And Baseline Refresh
+
+Status: latency improved, quality preserved, but the `<=2x` latency claim remains unsupported.
+
+Controlled latency comparison:
+
+| Path | Accuracy | Mean decode | Median decode | Peak process memory | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SourceCopy TTL6, 3 seeds required-depth trials2 | `24/24` | `689.4 ms/step` | `735.7 ms/step` | `21.8262 GiB` | Previous accepted exact-copy path |
+| SourceCopy TTL12, 3 seeds required-depth trials2 | `24/24` | `450.6 ms/step` | `393.6 ms/step` | `21.8262 GiB` | Current latency candidate |
+| FullKV SDPA manual, 128K, 75 GiB cap | `1/1` | `52.25 ms/step` | n/a | monitor `41.3672 GiB`, torch reserved `62.9629 GiB` | Wide-memory A100 reference, not 24G survival baseline |
+
+TTL12 per-seed results:
+
+| Seed | Depths | Trials | Result | Mean decode | Mean prefill | Max reserved | Artifact |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `6004` | 25/50/75/90 | 2 each | `8/8` | `365.4 ms/step` | `48.5s` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_ttl12_seed6004_driver_gpu3_20260529_auto.json` |
+| `4242` | 25/50/75/90 | 2 each | `8/8` | `533.3 ms/step` | `55.3s` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_ttl12_seed4242_driver_gpu3_20260529_auto.json` |
+| `7777` | 25/50/75/90 | 2 each | `8/8` | `453.2 ms/step` | `55.2s` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_ttl12_seed7777_driver_gpu3_20260529_auto.json` |
+
+Failed or weak latency ideas:
+
+| Idea | Result | Decision | Artifact |
+| --- | ---: | --- | --- |
+| SourceCopy + Triton scoring on seed6004 25/50 trials2 | `4/4`, `571.0 ms/step` | Correct but only ~3.2% faster than the same TTL6 torch-scoring cases; not enough to promote | `experiments/niah_128k_depth25_50_trials2_sourcecopy_tritonscore_seed6004_driver_gpu3_20260529_auto.json` |
+| Decode no-attention-mask retry | `0/4`, cuBLAS/runtime errors | Reject; do not remove decode mask in this wrapper | `experiments/niah_128k_depth25_50_trials2_sourcecopy_nomask_seed6004_retryclean_gpu3_20260529_auto.json` |
+| First no-attention-mask attempt | invalid OOM | Concurrent own-user GPU process overlapped; kept as scheduling artifact only | `experiments/niah_128k_depth25_50_trials2_sourcecopy_nomask_seed6004_driver_gpu3_20260529_auto.json` |
+
+Latency interpretation:
+
+- TTL12 is a real improvement because it keeps the same 22 GiB cap, same NIAH depths, same SourceCopy exactness layer, and same `24/24` outcome while lowering mean decode from `689.4` to `450.6 ms/step`.
+- It is still far from the refreshed FullKV SDPA wide-memory reference: mean ratio `8.62x`, median ratio `7.53x`.
+- The FullKV baseline uses `62.9629 GiB` torch reserved memory, so it is not a 4090 survival competitor; it is only an A100 speed reference.
+- Workflow3 remains blocked by latency and by the need to refresh PPL under the TTL12 candidate with SourceCopy excluded from general-language PPL.

@@ -105,3 +105,24 @@ Update after Round 29:
 - Next automatic priority:
   - Commit/sync/push this evidence.
   - Run latency breakdown and fair baseline refresh under the same 22 GiB memory envelope, if GPU safety permits.
+
+Update after Round 30:
+
+- Latency candidate update:
+  - SourceCopy TTL12 completed required-depth trials2 on seeds `6004`, `4242`, and `7777`.
+  - Aggregate result: `24/24`.
+  - Mean decode improved from TTL6 `689.4 ms/step` to TTL12 `450.6 ms/step`.
+  - Peak process memory stayed `21.8262 GiB`; torch reserved stayed `21.3262 GiB`.
+- Fair baseline refresh:
+  - FullKV 128K SDPA manual decode on idle GPU1, 75 GiB cap: `1/1`.
+  - Decode `52.25 ms/step`, torch reserved `62.9629 GiB`.
+- Claim boundary:
+  - TTL12 is the current latency candidate.
+  - The `<=2x` latency target is still not met; mean ratio is `8.62x` and median ratio is `7.53x` versus wide-memory FullKV SDPA.
+  - Do not enter Workflow3 yet.
+- Failed/weak ideas recorded:
+  - SourceCopy + Triton scoring: correct but weak speed gain on seed6004 25/50 trials2.
+  - Decode no-attention-mask: rejected after clean retry with cuBLAS/runtime errors.
+- Next automatic priority:
+  - Commit/sync/push Round 30 evidence.
+  - Refresh PPL with the TTL12 candidate while keeping SourceCopy out of general-language PPL.

@@ -1364,3 +1364,54 @@ Decision:
 - This is the strongest current 128K exact-copy task evidence, but it remains a separate experimental exactness reranker result.
 - The pure source-aware retrieval without SourceCopy remains weaker on the hard same-case ablation (`3/4` on 25%/50% trials2), which should be reported rather than hidden.
 - Next automatic Workflow2 priority shifts to latency breakdown and fair baseline refresh, because quality and memory evidence for the SourceCopy-assisted path are now strong enough for this stage.
+
+## Workflow2 Round 30: TTL12 Latency Candidate And Baseline Refresh
+
+Automatic review target:
+
+- After SourceCopy-assisted quality reached `24/24`, latency became the main blocker.
+- FullKV 128K SDPA baseline can be run only when a target GPU is idle. During this round GPU1 was idle; GPU0 had another `ahr` VideoMME/native-KV process and was not touched.
+
+Current TTL6 SourceCopy baseline:
+
+| Path | Accuracy | Mean decode | Median decode | Peak process memory |
+|---|---:|---:|---:|---:|
+| SourceCopy TTL6, seeds 6004/4242/7777 | `24/24` | `689.4 ms/step` | `735.7 ms/step` | `21.8262 GiB` |
+
+Ideas tested:
+
+| Idea | Result | Decision | Artifact |
+|---|---:|---|---|
+| SourceCopy + Triton scoring, seed6004 25/50 trials2 | `4/4`, `571.0 ms/step` | Correct but only ~3.2% faster than same-case torch scoring; do not expand as main path | `experiments/niah_128k_depth25_50_trials2_sourcecopy_tritonscore_seed6004_driver_gpu3_20260529_auto.json` |
+| Decode without attention mask | clean retry failed `0/4` with cuBLAS/runtime errors | Reject; short-KV decode still depends on the wrapper's mask path | `experiments/niah_128k_depth25_50_trials2_sourcecopy_nomask_seed6004_retryclean_gpu3_20260529_auto.json` |
+| SourceCopy + selected-key TTL12 | `24/24` full required-depth across 3 seeds | Promote as current latency candidate | see below |
+
+TTL12 validation under the 22 GiB cap and 30 GiB own-process fuse:
+
+| Seed | Depths / Trials | Accuracy | Mean decode | Mean prefill | Max reserved | Artifact |
+|---:|---|---:|---:|---:|---:|---|
+| `6004` | 25/50/75/90, 2 each | `8/8` | `365.4 ms/step` | `48.5s` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_ttl12_seed6004_driver_gpu3_20260529_auto.json` |
+| `4242` | 25/50/75/90, 2 each | `8/8` | `533.3 ms/step` | `55.3s` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_ttl12_seed4242_driver_gpu3_20260529_auto.json` |
+| `7777` | 25/50/75/90, 2 each | `8/8` | `453.2 ms/step` | `55.2s` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_ttl12_seed7777_driver_gpu3_20260529_auto.json` |
+
+Aggregate TTL12:
+
+- Accuracy: `24/24`.
+- Mean decode: `450.6 ms/step`.
+- Median decode: `393.6 ms/step`.
+- Decode range: `328.1-875.0 ms/step`.
+- Mean prefill: `53.0s`.
+- Peak process memory: `21.8262 GiB`.
+
+Refreshed FullKV wide-memory baseline:
+
+| Baseline | Result | Prefill | Decode | Max reserved | Monitor peak | Artifact |
+|---|---:|---:|---:|---:|---:|---|
+| FullKV 128K SDPA manual decode, GPU1, 75 GiB cap | `1/1` | `28.72s` | `52.25 ms/step` | `62.9629 GiB` | `41.3672 GiB` | `experiments/niah_fullkv_128k_cap75_sdpa_manual_latency_refresh_gpu1_20260529_auto.json` |
+
+Decision:
+
+- TTL12 is the current best latency/quality candidate for the SourceCopy-assisted path.
+- It improves mean decode from `689.4` to `450.6 ms/step` without increasing the 22 GiB memory envelope.
+- It still does not meet the original `<=2x` latency target: mean ratio is `8.62x`, median ratio is `7.53x` versus the refreshed wide-memory FullKV SDPA reference.
+- Workflow3 is not ready on latency grounds. Next credible step is a PPL refresh under the TTL12 candidate with SourceCopy kept out of general-language PPL, then consider deeper attention/retrieval fusion only if the user wants to pursue the latency gap.
