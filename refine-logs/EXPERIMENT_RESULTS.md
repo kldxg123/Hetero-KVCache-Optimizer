@@ -1443,3 +1443,12 @@ Next:
 1. Refresh PPL with SourceCopy disabled.
 2. Run a broader NIAH matrix only if GPU memory remains safe.
 3. Keep SourceCopy labeled as an exact-copy reranker in any paper-style report.
+
+
+### Round 24 Follow-Up: Third Seed SourceCopy Check
+
+| Seed | Depths | Trials | Result | Avg decode | Max reserved | Peak process group | Artifact |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `7777` | 25/50/75/90 | 1 each | `4/4` | `843.5 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed7777_gpu3_20260529_164144.json` |
+
+Aggregate for SourceCopy-assisted required-depth NIAH: `12/12` across seeds `6004`, `4242`, and `7777`, one trial per depth. This strengthens exact-copy NIAH evidence but remains labeled as experimental SourceCopy, separate from pure dot-product retrieval.

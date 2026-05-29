@@ -1190,3 +1190,14 @@ Current ranked ideas:
 | 3 | PPL refresh with SourceCopy disabled | Ensure general semantic loss is still measured without NIAH-only copy help | Next |
 | 4 | Full ablation table: no SourceCopy vs SourceCopy | Quantify exactness gain from the reranker | Needed for paper |
 | 5 | True 4090 retest | Convert A100 memory-envelope evidence into hardware evidence | Later |
+
+
+### Round 24 Follow-Up: Third Seed Check
+
+Additional SourceCopy exactness run:
+
+| Run | Result | Avg decode | Max reserved | Peak process group | Artifact |
+|---|---:|---:|---:|---:|---|
+| seed7777 required depths, 1 trial/depth | `4/4` | `843.5 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed7777_gpu3_20260529_164144.json` |
+
+Aggregate SourceCopy exactness evidence is now `12/12` across seeds `6004`, `4242`, and `7777`, one trial per required depth. The seed7777 50% row was slower (`1703 ms/token`), so latency still needs a fairer breakdown before Workflow3.
