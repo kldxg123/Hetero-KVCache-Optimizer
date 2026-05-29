@@ -1699,15 +1699,52 @@ class HeteroKVManager:
                     self._method_d_reuse_cache.pop(layer_idx, None)
 
             if not reuse_hit:
+                current_end = self._seq_offsets[layer_idx] if layer_idx < len(self._seq_offsets) else 0
+                retrieval_candidate_keys = list(dram_keys)
+                source_prefilter_scores: Dict[str, float] = {}
+                source_prefilter_active = False
+                source_prefilter_threshold = max(
+                    0.0,
+                    float(self._method_d_reuse_source_threshold),
+                )
+                if (
+                    self._method_d_require_source_overlap
+                    and self._method_d_source_token_boost > 0.0
+                ):
+                    source_candidates = []
+                    for key in dram_keys:
+                        source_score = self._method_d_source_token_score(key, current_end)
+                        if self._method_d_allow_source_before_min_position:
+                            source_score = max(
+                                source_score,
+                                self._method_d_chunk_source_cue_score(key),
+                            )
+                        source_prefilter_scores[key] = source_score
+                        passes_threshold = (
+                            source_score > 0.0
+                            if source_prefilter_threshold <= 0.0
+                            else source_score >= source_prefilter_threshold
+                        )
+                        if passes_threshold:
+                            source_candidates.append(key)
+                    if source_candidates:
+                        retrieval_candidate_keys = source_candidates
+                        source_prefilter_active = True
+
                 # Use Method D to rank and select chunks.
                 selected_keys, method_used = self._method_d_retriever.retrieve_chunks(
                     query_key=query_key,
-                    candidate_keys=dram_keys,
+                    candidate_keys=retrieval_candidate_keys,
                     top_k=top_k,
                     historical_scores=self._chunk_attention_scores,
                     dram_table=self._dram.table,
                     compressor=self._compressor,
                 )
+                if source_prefilter_active:
+                    method_used = (
+                        f"{method_used}_source_prefilter"
+                        f"{len(retrieval_candidate_keys)}of{len(dram_keys)}"
+                    )
                 self._last_retrieval_scores = dict(
                     getattr(self._method_d_retriever.query_aware_retriever, "last_scores", {})
                 )
@@ -1726,7 +1763,6 @@ class HeteroKVManager:
                 ):
                     adjusted_scores = {}
                     source_positive_scores = {}
-                    current_end = self._seq_offsets[layer_idx] if layer_idx < len(self._seq_offsets) else 0
                     tail_guard_start = None
                     if self._method_d_tail_guard_tokens > 0:
                         if current_end > 0:
@@ -1735,7 +1771,9 @@ class HeteroKVManager:
                         if key not in self._last_retrieval_scores:
                             continue
                         start_pos, end_pos = self._chunk_position_ranges.get(key, (-1, -1))
-                        source_score = self._method_d_source_token_score(key, current_end)
+                        source_score = source_prefilter_scores.get(key)
+                        if source_score is None:
+                            source_score = self._method_d_source_token_score(key, current_end)
                         if self._method_d_allow_source_before_min_position:
                             source_score = max(
                                 source_score,
@@ -1779,6 +1817,12 @@ class HeteroKVManager:
                     if selected_keys:
                         method_used = f"{method_used}_consensus"
                         self._last_retrieval_scores = adjusted_scores
+                if source_prefilter_active:
+                    for item_key in selected_keys:
+                        self._last_source_token_scores[item_key] = source_prefilter_scores.get(
+                            item_key,
+                            self._last_source_token_scores.get(item_key, 0.0),
+                        )
             for key in selected_keys:
                 start_pos, end_pos = self._chunk_position_ranges.get(key, (-1, -1))
                 bin_key = self._method_d_range_bin(start_pos, end_pos)

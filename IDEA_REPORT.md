@@ -1495,3 +1495,58 @@ Decision:
 - `max_new_tokens=8` is a valid demonstration setting for a 6-digit NIAH answer because all four rows still contain the target code.
 - It improves end-to-end elapsed time by avoiding repeated answer generation, but it does not improve per-token latency; therefore it must be reported as an evaluation/display setting, not an algorithmic speedup.
 - For paper-grade latency, keep reporting `decode_ms/step` separately from end-to-end task time.
+
+## Workflow2 Round 33: Source-Prefiltered Retrieval Reuse
+
+Automatic review target:
+
+- Move from scalar TTL tuning to a structural latency fix.
+- Keep diagnostic/oracle mechanisms separate from the reported SourceCopy-assisted exact-match path and from the pure dot-product/PPL path.
+- Reduce Method-D retrieval scoring cost without changing the 22 GiB PyTorch cap or the 30 GiB own-process fuse.
+
+Promoted idea:
+
+| Rank | Idea | Why it was tested | Result | Decision |
+|---:|---|---|---|---|
+| 1 | Source-aware prefilter before dot-product scoring | SourceCopy already computes exact source-overlap evidence; use it to narrow DRAM candidate chunks before token-level QK scoring | `24/24` across 3 clean seeds, mean decode `168.1 ms/step`, source prefilter `1/60` chunks | Promote as current latency candidate for NIAH/source-cue path |
+| 2 | TTL24 reuse without prefilter | TTL12 helped; TTL24 might amortize selected retrieval longer | Correct on small/full checks, but seed6004 full mean decode still `166.5 ms/step` only after prefilter; non-prefilter TTL24 small run was `369.8 ms/step` | Keep TTL24 only together with source prefilter |
+| 3 | `max_new_tokens=8` short-answer setting | The answer is a 6-digit code, so long generation mostly repeats the code | Correct but per-step decode worsened in the small run | Use only as display/demo control, not speedup |
+
+Implementation change:
+
+- `src/memory/manager.py`: Method-D now applies source-overlap filtering before token-level dot-product scoring when `method_d_require_source_overlap` and `method_d_source_token_boost > 0`.
+- If no chunk passes the source threshold, it falls back to the full DRAM candidate list; this prevents silent recall loss from an empty prefilter.
+- The method string logs `source_prefilter{selected}of{total}` so the mechanism is auditable.
+- Stage-1 tests caught an initial attribute-name bug; after fixing it to use `_method_d_reuse_source_threshold`, `tests/test_heterokv_stage1.py` passed `16/16`.
+
+Clean 128K NIAH evidence:
+
+| Variant | Seeds | Depths / Trials | Accuracy | Mean decode | Median decode | Mean prefill | Mean elapsed | Peak process memory | Mechanism |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| SourceCopy + source-prefilter + TTL24 | `6004`, `4242`, `7777` | 25/50/75/90, 2 each | `24/24` | `168.1 ms/step` | `166.9 ms/step` | `48.47s` | `52.67s` | `22.348 GB` | `1/60` DRAM chunks selected per retrieval tail sample |
+
+Per-seed details:
+
+| Seed | Accuracy | Mean decode | Median decode | Mean elapsed | Active HBM cap evidence | DRAM bytes | Artifact |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| `6004` | `8/8` | `166.5 ms/step` | `165.6 ms/step` | `52.60s` | `max_hbm_tokens=12352` | `3,688,185,984` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_seed6004_driver_gpu3_20260529_auto.json` |
+| `4242` | `8/8` | `168.8 ms/step` | `167.4 ms/step` | `52.74s` | `max_hbm_tokens=12352` | `3,688,185,984` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_seed4242_seqrerun_gpu3_20260529_auto.json` |
+| `7777` | `8/8` | `169.1 ms/step` | `169.0 ms/step` | `52.67s` | `max_hbm_tokens=12352` | `3,688,185,984` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_seed7777_seqrerun2_gpu3_20260529_auto.json` |
+
+Failed or invalid ideas recorded:
+
+| Idea / run | Failure mode | Decision |
+|---|---|---|
+| Parallel seed4242 + seed7777 full-depth prefilter run | `scripts/run_experiment.py` wrote both child runs to the fixed `experiments/niah_eval.json`, so one run clobbered the other | Do not use the parallel seed4242 artifact; sequential reruns are the valid evidence |
+| First direct seed7777 wrapper run | Missing `CUDA_VISIBLE_DEVICES=3`, so `run_niah_eval.py` refused to run and exited before GPU allocation | Record as wrapper failure, not model failure |
+
+Workflow fix:
+
+- `scripts/run_experiment.py` now derives unique NIAH child output paths from non-default tracker filenames, with `--niah-output` as an explicit override.
+- Verification: remote `py_compile` passed, `tests/test_heterokv_stage1.py` passed `16/16`, and `experiment_output_path()` returns unique paths for non-default trackers.
+
+Decision:
+
+- This is the strongest current source-cue/NIAH path: correct, memory-safe, and much faster than previous TTL-only variants.
+- It is still not a claim that pure token-level dot-product alone solves NIAH; the SourceCopy/source-prefilter path must remain labeled as source-aware exact-copy assistance.
+- Workflow3 is still not ready under the original latency criterion: `168.1 / 52.25 = 3.22x` versus the wide-memory A100 FullKV SDPA reference, above the `<=2x` target.

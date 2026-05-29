@@ -1748,3 +1748,70 @@ Interpretation:
 - The gain is not large enough to replace TTL12 as the main validated candidate without full-depth, multi-seed confirmation.
 - `max_new_tokens=8` is useful for NIAH demos because the answer is a short code and all tested rows still answered correctly.
 - `max_new_tokens=8` must not be reported as per-token acceleration; it lowers task elapsed time by avoiding repeated output, while `decode_ms/step` is higher in this small run.
+
+
+## Workflow2 Round 33 Results: Source-Prefiltered TTL24
+
+Status: structural latency optimization passed clean 128K NIAH, but still above the original `<=2x` latency target.
+
+Code review and fix:
+
+| Issue | Resolution |
+| --- | --- |
+| Method-D scored all DRAM chunks even when SourceCopy/source-overlap evidence identified the relevant source chunk | Added source-overlap prefilter before token-level dot-product scoring when source-overlap mode is enabled |
+| First implementation referenced a nonexistent source-threshold attribute | Stage-1 tests caught it; fixed to `_method_d_reuse_source_threshold` |
+| Workflow wrapper reused `experiments/niah_eval.json` for multiple NIAH runs | Added unique NIAH output derivation from tracker stem and `--niah-output` override in `scripts/run_experiment.py` |
+
+Verification:
+
+- Remote compile: `python -m py_compile scripts/run_experiment.py`.
+- Remote stage-1 tests: `16 passed in 6.97s`.
+- Output-path helper check:
+  - default tracker -> `experiments/niah_eval.json`.
+  - non-default tracker -> `experiments/niah_eval_<tracker-stem>.json`.
+  - explicit `--niah-output` remains respected.
+
+Clean 128K NIAH results:
+
+| Seed | Depths | Trials | Result | Mean decode | Median decode | Mean elapsed | Max active HBM tokens | DRAM bytes | Artifact |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `6004` | 25/50/75/90 | 2 each | `8/8` | `166.5 ms/step` | `165.6 ms/step` | `52.60s` | `12352` | `3,688,185,984` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_seed6004_driver_gpu3_20260529_auto.json` |
+| `4242` | 25/50/75/90 | 2 each | `8/8` | `168.8 ms/step` | `167.4 ms/step` | `52.74s` | `12352` | `3,688,185,984` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_seed4242_seqrerun_gpu3_20260529_auto.json` |
+| `7777` | 25/50/75/90 | 2 each | `8/8` | `169.1 ms/step` | `169.0 ms/step` | `52.67s` | `12352` | `3,688,185,984` | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_seed7777_seqrerun2_gpu3_20260529_auto.json` |
+
+Aggregate:
+
+| Metric | Value |
+| --- | ---: |
+| Accuracy | `24/24` |
+| Depth 25% | `6/6` |
+| Depth 50% | `6/6` |
+| Depth 75% | `6/6` |
+| Depth 90% | `6/6` |
+| Mean decode | `168.1 ms/step` |
+| Median decode | `166.9 ms/step` |
+| Decode std | `3.41 ms/step` |
+| Mean prefill | `48.47s` |
+| Mean elapsed | `52.67s` |
+| Ratio vs FullKV SDPA A100 wide-memory reference | `3.22x` |
+
+Mechanism evidence:
+
+- Source prefilter tail logs consistently show `(1, 60)`, meaning the source-aware filter narrowed the DRAM retrieval candidate set from 60 chunks to 1 chunk before token-level dot-product scoring.
+- Prefilter event count: `4096` per seed in the tail logs.
+- Seed7777 monitor: return code `0`, own-process peak `22348 MB`, killed by monitor `False`.
+- GPU was released after completion; final `nvidia-smi` showed all GPUs idle.
+
+Invalid/failed runs:
+
+| Run | Outcome | Treatment |
+| --- | --- | --- |
+| Parallel seed4242 + seed7777 prefilter attempt | Shared child output path caused result clobbering | Excluded from evidence; replaced by sequential seed4242 and seed7777 reruns |
+| First direct seed7777 wrapper | `CUDA_VISIBLE_DEVICES` missing, `run_niah_eval.py` exited with status `failed` before GPU use | Recorded as wrapper failure only; rerun with `CUDA_VISIBLE_DEVICES=3` is the valid result |
+
+Interpretation:
+
+- The source-prefiltered TTL24 path is now the strongest 128K NIAH/source-cue candidate.
+- It should be described as source-aware exact-copy assistance plus token-level dot-product retrieval, not as pure dot-product retrieval.
+- The original latency target is not yet met: `3.22x` vs FullKV wide-memory A100 reference exceeds `2x`.
+- PPL evidence remains the Round 31 SourceCopy-disabled WikiText-2 result; source-prefilter did not replace that general-language claim.

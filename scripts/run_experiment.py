@@ -304,13 +304,26 @@ def parse_plan(path: Path = PLAN_PATH) -> Dict[str, object]:
 
 
 def read_json_result(relative_path: str) -> Optional[Dict[str, object]]:
-    path = PROJECT_ROOT / relative_path
+    path = Path(relative_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
     if not path.exists():
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
+
+
+def experiment_output_path(default_name: str, explicit_path: Optional[str] = None) -> str:
+    if explicit_path:
+        return explicit_path
+    tracker_stem = TRACKER_PATH.stem
+    if tracker_stem and tracker_stem != "experiment_tracker":
+        safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", tracker_stem).strip("._")
+        if safe_stem:
+            return f"experiments/{default_name}_{safe_stem}.json"
+    return f"experiments/{default_name}.json"
 
 
 def is_shared_safety_skip(payload: Optional[Dict[str, object]]) -> bool:
@@ -460,7 +473,7 @@ def stage_stage2(args) -> Dict[str, object]:
 def stage_niah(args) -> Dict[str, object]:
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(args.gpu_index)
-    output_path = "experiments/niah_eval.json"
+    output_path = experiment_output_path("niah_eval", args.niah_output)
     cmd = [
         sys.executable,
         "scripts/run_niah_eval.py",
@@ -801,6 +814,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--niah-max-new-tokens", type=int, default=24)
     parser.add_argument("--niah-fullkv-manual-decode", action="store_true")
     parser.add_argument("--niah-decode-suffix-tokens", type=int, default=1)
+    parser.add_argument(
+        "--niah-output",
+        default=None,
+        help=(
+            "Output JSON for the child NIAH run. If omitted, non-default tracker "
+            "names derive a unique experiments/niah_eval_<tracker-stem>.json path."
+        ),
+    )
     parser.add_argument("--ablation-lengths", type=int, nargs="+", default=[4096, 8192])
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--allow-busy", action="store_true")

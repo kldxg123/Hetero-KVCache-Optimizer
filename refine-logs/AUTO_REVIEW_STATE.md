@@ -175,3 +175,38 @@ Update after Round 32:
   - Commit Round 32 docs locally on the remote.
   - Retry GitHub push when connectivity returns.
   - Choose between full TTL24 validation and a deeper structural latency idea; do not claim Workflow3 readiness yet.
+
+Update after Round 33:
+
+- Structural latency optimization implemented:
+  - Source-overlap prefilter now narrows Method-D DRAM candidates before token-level dot-product scoring when SourceCopy/source-aware mode is enabled.
+  - Fallback remains full DRAM candidate scoring if the source prefilter finds no chunk.
+  - Mechanism logs expose `source_prefilter{selected}of{total}`.
+- Code review outcome:
+  - Initial implementation had an attribute-name bug; stage-1 tests caught it.
+  - Fixed threshold field to `_method_d_reuse_source_threshold`.
+  - Remote `tests/test_heterokv_stage1.py`: `16 passed`.
+- Clean 128K source-prefilter evidence:
+  - Seed6004 required-depth trials2: `8/8`, mean decode `166.5 ms/step`.
+  - Seed4242 required-depth trials2, sequential rerun: `8/8`, mean decode `168.8 ms/step`.
+  - Seed7777 required-depth trials2, sequential rerun: `8/8`, mean decode `169.1 ms/step`.
+  - Aggregate: `24/24`, depth-wise `6/6` at 25/50/75/90.
+  - Aggregate mean decode: `168.1 ms/step`.
+  - Aggregate mean prefill: `48.47s`.
+  - Source prefilter evidence: `(1, 60)` chunks in mechanism tail logs.
+  - Seed7777 monitor peak: `22348 MB`, no 30 GiB fuse trigger.
+- Invalid/failed runs:
+  - Parallel seed4242/seed7777 prefilter run is invalid because fixed child output `experiments/niah_eval.json` caused clobbering.
+  - First seed7777 direct wrapper run failed before GPU allocation because `CUDA_VISIBLE_DEVICES=3` was missing.
+- Workflow harness fix:
+  - `scripts/run_experiment.py` now derives unique NIAH child output from non-default tracker stems.
+  - New explicit override: `--niah-output`.
+  - Remote compile and stage-1 tests passed.
+- Claim boundary:
+  - Source-prefiltered TTL24 is the current best NIAH/source-cue path.
+  - It is not the pure dot-product-only claim.
+  - Workflow3 remains blocked by latency: `168.1 / 52.25 = 3.22x`, still above the original `<=2x` target.
+- Next automatic priority:
+  - Commit Round 33 code/docs locally on the remote.
+  - Push if GitHub authentication/network works; if not, record auth failure and keep remote local commits.
+  - Continue Workflow2 with either a latency-ratio optimization or prepare a strict paper-claim split where source-aware NIAH and SourceCopy-disabled PPL are presented separately.
