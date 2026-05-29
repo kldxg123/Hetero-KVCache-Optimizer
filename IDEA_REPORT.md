@@ -1601,3 +1601,26 @@ Claim boundary:
 - This is a source-aware exact-copy/NIAH candidate, not pure dot-product-only retrieval.
 - The latency target is now met for the source-prefiltered late-layer path on A100 under the 22 GiB PyTorch cap and 30 GiB own-process fuse.
 - The PPL claim still relies on the separate SourceCopy-disabled WikiText-2 result from Round 31; late-layer SourceCopy should not be used to claim general-language PPL quality unless tested separately.
+
+## Workflow2 Round 35: Optional Depth Boundary Audit
+
+Automatic review target:
+
+- Stress the promoted 22-27 source-prefilter path at optional depths 0% and 99%.
+- Determine whether a 0% failure is a HeteroKV retrieval failure or a non-discriminative NIAH construction issue.
+- Keep failed diagnostics in the record.
+
+Results:
+
+| Variant | Seed(s) | Depths / Trials | Accuracy | Depth 0% | Depth 99% | Peak memory | Artifact |
+|---|---|---|---:|---:|---:|---:|---|
+| HeteroKV source-prefilter 22-27, sink64 | `6004`, `4242`, `7777` | 0%/99%, 2 each | `6/12` | `0/6` | `6/6` | `22348 MB` | `experiments/niah_128k_optional0_99_trials2_sourceprefilter_ttl24_layers22_27_seed*_gpu*_20260529_auto.json` |
+| HeteroKV diagnostic sink1024 | `6004` | 0%/99%, 2 each | `0/4` | `0/2` | `0/2` | `22400 MB` | `experiments/niah_128k_optional0_99_trials2_sourceprefilter_ttl24_layers22_27_sink1024_seed6004_gpu3_20260529_auto.json` |
+| FullKV baseline, SDPA manual decode, cap75 | `6004` | 0%/99%, 2 each | `2/4` | `0/2` | `2/2` | `42362 MB` process, `62.9629 GiB` reserved | `experiments/niah_128k_optional0_99_trials2_fullkv_cap75_sdpa_manual_seed6004_gpu1_20260529_auto.json` |
+
+Interpretation:
+
+- 99% is a valid edge-depth stress result for the promoted HeteroKV path: it passes `6/6`.
+- 0% is not a valid HeteroKV-specific failure under this corpus/query template because FullKV also fails both seed6004 0% rows. The needle range was `[30,36]`, and FullKV generated `000000` instead of the target code.
+- The sink1024 diagnostic is rejected. Increasing the sink budget did not repair 0% and broke 99% in the tested configuration, so it should not be promoted.
+- Paper tables should report required depths 25/50/75/90 as the main benchmark and may report 99% as an additional edge-depth pass. A 0% table row should be marked non-discriminative unless the NIAH prompt/template is redesigned and FullKV passes it.

@@ -236,3 +236,27 @@ Update after Round 34:
 - Current Workflow3 readiness:
   - Strong enough to start drafting a paper-style result section for the source-aware NIAH path, subject to user approval.
   - Recommended before formal Workflow3: optional 0%/99% depths for the promoted 22-27 path and a compact generate compatibility rerun under the promoted configuration.
+
+Update after Round 35:
+
+- Optional 0%/99% boundary audit completed.
+- Promoted HeteroKV source-prefilter 22-27, sink64:
+  - Seeds `6004`, `4242`, `7777`.
+  - Aggregate: `6/12`.
+  - Depth 0%: `0/6`.
+  - Depth 99%: `6/6`.
+  - Own-process peak: `22348 MB`; no 30 GiB fuse trigger.
+- Discriminativeness baseline:
+  - FullKV SDPA manual decode, seed6004, cap75: `2/4`.
+  - FullKV 0%: `0/2`, generated `000000` for needle range `[30,36]`.
+  - FullKV 99%: `2/2`.
+  - Process peak `42362 MB`; torch reserved `62.9629 GiB`.
+- Rejected diagnostic:
+  - sink1024 HeteroKV, seed6004 0/99: `0/4`, peak `22400 MB`.
+- Claim boundary:
+  - 99% can be reported as an additional edge-depth pass.
+  - 0% is non-discriminative under the current NIAH template because FullKV also fails it.
+  - Do not claim HeteroKV fails a valid 0% benchmark unless FullKV first passes a redesigned 0% corpus/query.
+- Current Workflow3 readiness:
+  - Required NIAH depths, 99% edge depth, memory, PPL boundary, latency target, and mechanism logs are strong enough to prepare a paper draft.
+  - Remaining optional pre-Workflow3 item: compact generate compatibility table under the promoted config, if the user wants one more sanity row before writing.

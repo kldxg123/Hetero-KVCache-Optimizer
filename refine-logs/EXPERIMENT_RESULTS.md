@@ -1870,3 +1870,48 @@ Interpretation:
 - The late-layer source-prefilter path meets the latency target for the source-aware NIAH setting: `1.88x <= 2x`.
 - This does not supersede the pure dot-product or SourceCopy-disabled PPL boundaries.
 - Before Workflow3/paper writing, remaining evidence to consider: optional 0%/99% depths for the promoted path, a short generate compatibility rerun under the promoted config, and a paper table that clearly separates source-aware NIAH from general-language PPL.
+
+
+## Workflow2 Round 35 Results: Optional 0%/99% Boundary Audit
+
+Status: 99% passed; 0% is non-discriminative because FullKV also fails it.
+
+Optional HeteroKV edge-depth run:
+
+| Seed | GPU | Depths | Trials | Result | 0% | 99% | Monitor peak | Artifact |
+| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `6004` | 1 | 0/99 | 2 each | `2/4` | `0/2` | `2/2` | `22348 MB` | `experiments/niah_128k_optional0_99_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu1_20260529_auto.json` |
+| `4242` | 2 | 0/99 | 2 each | `2/4` | `0/2` | `2/2` | `22348 MB` | `experiments/niah_128k_optional0_99_trials2_sourceprefilter_ttl24_layers22_27_seed4242_gpu2_20260529_auto.json` |
+| `7777` | 3 | 0/99 | 2 each | `2/4` | `0/2` | `2/2` | `22348 MB` | `experiments/niah_128k_optional0_99_trials2_sourceprefilter_ttl24_layers22_27_seed7777_gpu3_20260529_auto.json` |
+
+Aggregate:
+
+- Overall: `6/12`.
+- Depth 0%: `0/6`.
+- Depth 99%: `6/6`.
+- No 30 GiB fuse trigger.
+
+FullKV discriminativeness check:
+
+| Variant | Seed | Depths | Trials | Result | 0% | 99% | Memory | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| FullKV baseline, SDPA manual decode, cap75 | `6004` | 0/99 | 2 each | `2/4` | `0/2` | `2/2` | process peak `42362 MB`, torch reserved `62.9629 GiB` | `experiments/niah_128k_optional0_99_trials2_fullkv_cap75_sdpa_manual_seed6004_gpu1_20260529_auto.json` |
+
+FullKV 0% rows:
+
+| Trial | Needle range | Target | FullKV output | Correct |
+| ---: | --- | --- | --- | ---: |
+| 0 | `[30, 36]` | `847754` | `000000` | False |
+| 1 | `[30, 36]` | `690144` | `000000` | False |
+
+Rejected diagnostic:
+
+| Idea | Result | Decision |
+| --- | ---: | --- |
+| Increase sink tokens from 64 to 1024 for 0%/99% | seed6004 `0/4`, process peak `22400 MB` | Reject; it did not repair 0% and broke 99% in this configuration |
+
+Interpretation:
+
+- 99% is a meaningful optional depth pass for the promoted HeteroKV path.
+- 0% should not be used as evidence against HeteroKV under the current NIAH template, because the wide-memory FullKV baseline also fails it.
+- If 0% is required for a paper table, redesign the NIAH generator/query so FullKV first passes 0%; then rerun HeteroKV.
