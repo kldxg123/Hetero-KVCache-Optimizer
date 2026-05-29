@@ -1,0 +1,138 @@
+# Workflow3 Result Tables
+
+All tables in this file summarize experiments that were actually run. Artifact
+paths are relative to `/home/app-ahr/Hetero-KVCache-Optimizer`.
+
+## Main 128K Source-Aware NIAH Result
+
+Configuration:
+
+- Model: Qwen2.5-7B-Instruct.
+- Context: 128K.
+- Cache: HeteroKV.
+- Retrieval: source-prefiltered token-level path.
+- TTL: 24.
+- Active retrieval layers: 22-27.
+- Required depths: 25%, 50%, 75%, 90%.
+- Trials: 2 per depth per seed.
+- Seeds: 6004, 4242, 7777.
+- Memory policy: 22 GiB PyTorch cap, 30 GiB own-process fuse.
+- Hardware: A100 server, used as a 4090-like memory-envelope testbed.
+
+| Seed | GPU | Depths | Trials | Correct | Mean Decode | Median Decode | Ratio vs FullKV | Monitor Peak | Artifact |
+| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 6004 | 3 | 25/50/75/90 | 2 each | 8/8 | 97.85 ms/step | 97.80 ms/step | 1.87x | 22348 MB | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.json` |
+| 4242 | 2 | 25/50/75/90 | 2 each | 8/8 | 98.45 ms/step | 98.46 ms/step | 1.88x | 22348 MB | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed4242_gpu2_20260529_auto.json` |
+| 7777 | 3 | 25/50/75/90 | 2 each | 8/8 | 98.07 ms/step | 97.93 ms/step | 1.88x | 22348 MB | `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed7777_gpu3_20260529_auto.json` |
+
+Aggregate:
+
+| Metric | Value |
+| --- | ---: |
+| Accuracy | 24/24 |
+| Depth 25% | 6/6 |
+| Depth 50% | 6/6 |
+| Depth 75% | 6/6 |
+| Depth 90% | 6/6 |
+| Mean decode | 98.12 ms/step |
+| Median decode | 97.98 ms/step |
+| Decode std | 0.85 ms/step |
+| Mean prefill | 48.95 s |
+| Mean elapsed | 51.41 s |
+| Ratio vs wide-memory FullKV A100 reference | 1.88x |
+
+Mechanism evidence:
+
+| Evidence | Value |
+| --- | --- |
+| Retrieval active layers | 22-27 |
+| Method-D events | 150 per row |
+| Source prefilter tail sample | 1 of 60 DRAM chunks |
+| Safety fuse | No 30 GiB trigger |
+
+## Latency Reference
+
+| Variant | Context | Result | Prefill | Decode | Max Reserved | Monitor Peak | Artifact |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| FullKV SDPA manual decode, wide-memory A100 reference | 128K | 1/1 | 28.72 s | 52.25 ms/step | 62.9629 GiB | 42362 MB | `experiments/niah_fullkv_128k_cap75_sdpa_manual_latency_refresh_gpu1_20260529_auto.json` |
+
+Interpretation:
+
+- The FullKV reference is a speed/quality reference on wide-memory A100.
+- It is not a 24G-survival baseline.
+- FullKV reserved roughly 62.96 GiB in this reference setup, so it is not a
+  4090-24G survival path.
+
+## WikiText-2 PPL
+
+Configuration:
+
+- Dataset: WikiText-2.
+- Metric: real PPL from model loss.
+- SourceCopy: disabled.
+- Tokens: 14336.
+- Loss suffix: 2048.
+- Hetero cache config: sink 64, tail 4096, chunk 2048.
+- Retrieval config recorded: TTL12, reuse source threshold 35.
+
+| Variant | FullKV PPL | HeteroKV PPL | Delta | Hetero Max Reserved | Own Process Peak | Artifact |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| WikiText-2 real PPL, SDPA, SourceCopy-disabled | 2.9706 | 3.0063 | +1.20% | 19.2754 GiB | 20.248 GiB | `experiments/ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_allowcoexist_gpu3_20260529_auto.json` |
+
+Mechanism and memory:
+
+| Metric | Value |
+| --- | ---: |
+| Method-D event count | 512 |
+| Max active HBM tokens | 6208 |
+| DRAM entries | 112 |
+| DRAM bytes | 245891072 |
+
+Claim boundary:
+
+- This supports controlled semantic loss on the tested 14K PPL setup.
+- This is not a 128K PPL claim.
+- This does not validate SourceCopy/source-prefilter for general-language PPL.
+
+## Optional Edge Depths
+
+| Variant | Seeds | Depths | Trials | Correct | Depth 0% | Depth 99% | Peak | Artifact |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| HeteroKV source-prefilter 22-27 | 6004/4242/7777 | 0/99 | 2 each | 6/12 | 0/6 | 6/6 | 22348 MB | `experiments/niah_128k_optional0_99_trials2_sourceprefilter_ttl24_layers22_27_seed*_gpu*_20260529_auto.json` |
+| FullKV wide-memory discriminativeness check | 6004 | 0/99 | 2 each | 2/4 | 0/2 | 2/2 | 42362 MB | `experiments/niah_128k_optional0_99_trials2_fullkv_cap75_sdpa_manual_seed6004_gpu1_20260529_auto.json` |
+
+Interpretation:
+
+- 99% is a valid optional edge-depth pass.
+- 0% is non-discriminative under the current template because FullKV also
+  fails it.
+
+## Generate Compatibility
+
+| Target Tokens | Actual Input Tokens | Output Check | Elapsed | Max Allocated | Max Reserved | Max HBM Tokens | DRAM Entries | DRAM Bytes |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2048 | 1585 | True | 1.14 s | 15.10 GiB | 15.36 GiB | 4160 | 0 | 0 |
+| 4096 | 3144 | True | 1.72 s | 16.24 GiB | 17.07 GiB | 4160 | 28 | 32897536 |
+| 8192 | 6273 | True | 1.79 s | 18.06 GiB | 20.01 GiB | 4160 | 28 | 126817600 |
+
+Artifact:
+
+- Tracker: `experiments/experiment_tracker_stage2_generate_smoke_2k4k8k_after_fix_20260529_auto.json`.
+- Child output: `experiments/stage2_smoke.json`.
+- External monitor peak: 15.18 GiB.
+- Status: ok.
+
+Interpretation:
+
+- HF `generate()` compatibility is validated for 2K/4K/8K smoke contexts.
+- This is an API compatibility test, not the main 128K latency result.
+
+## Failed Or Rejected Ideas
+
+| Idea or Run | Failure Mode | Decision |
+| --- | --- | --- |
+| Parallel seed4242 and seed7777 prefilter run before output-path fix | Child output path clobbered one result | Excluded; sequential reruns are valid |
+| First direct seed7777 wrapper | Missing `CUDA_VISIBLE_DEVICES`, exited before GPU use | Wrapper failure only |
+| Sink1024 optional 0/99 diagnostic | 0/4, broke 99% too | Reject |
+| Purely treating optional 0% as a HeteroKV failure | FullKV also failed 0% | Mark non-discriminative |
+| Reporting source-prefilter NIAH as pure dot-product retrieval | Mechanism uses source-aware filtering | Disallowed |
