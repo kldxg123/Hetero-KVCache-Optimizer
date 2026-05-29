@@ -468,6 +468,8 @@ def stage_niah(args) -> Dict[str, object]:
         str(args.gpu_index),
         "--cap-gib",
         str(args.cap_gib),
+        "--attn-implementation",
+        args.niah_attn_implementation,
         "--seed",
         str(args.seed),
         "--lengths",
@@ -488,6 +490,10 @@ def stage_niah(args) -> Dict[str, object]:
         str(args.niah_chunk_size),
         "--method-d-gate-margin",
         str(args.niah_method_d_gate_margin),
+        "--method-d-source-gate-margin",
+        str(args.niah_method_d_source_gate_margin),
+        "--method-d-source-gate-margin-threshold",
+        str(args.niah_method_d_source_gate_margin_threshold),
         "--method-d-token-window",
         str(args.niah_method_d_token_window),
         "--method-d-layer-min",
@@ -524,6 +530,10 @@ def stage_niah(args) -> Dict[str, object]:
         str(args.niah_method_d_source_fusion_source_threshold),
         "--method-d-source-cue-answer-tokens",
         str(args.niah_method_d_source_cue_answer_tokens),
+        "--method-d-source-copy-logit-boost",
+        str(args.niah_method_d_source_copy_logit_boost),
+        "--method-d-source-copy-max-candidates",
+        str(args.niah_method_d_source_copy_max_candidates),
         "--method-d-retrieve-focus-only" if args.niah_method_d_retrieve_focus_only else None,
         "--method-d-retrieve-focus-context-tokens",
         str(args.niah_method_d_retrieve_focus_context_tokens),
@@ -531,8 +541,6 @@ def stage_niah(args) -> Dict[str, object]:
         str(args.niah_method_d_reuse_ttl_tokens),
         "--method-d-reuse-source-threshold",
         str(args.niah_method_d_reuse_source_threshold),
-        "--method-d-source-gate-bypass-threshold",
-        str(args.niah_method_d_source_gate_bypass_threshold),
         "--method-d-triton-scoring-batch-chunks",
         str(args.niah_method_d_triton_scoring_batch_chunks),
         "--max-new-tokens",
@@ -558,7 +566,16 @@ def stage_niah(args) -> Dict[str, object]:
         cmd.append("--method-d-source-fusion-focus-only")
     if args.niah_method_d_source_cue_focus:
         cmd.append("--method-d-source-cue-focus")
+    if args.niah_method_d_source_cue_order_aware:
+        cmd.append("--method-d-source-cue-order-aware")
     cmd = [item for item in cmd if item is not None]
+    if args.niah_method_d_source_gate_bypass_threshold > 0.0:
+        cmd.extend(
+            [
+                "--method-d-source-gate-bypass-threshold",
+                str(args.niah_method_d_source_gate_bypass_threshold),
+            ]
+        )
     if args.niah_method_d_reuse_gate_bypass:
         cmd.append("--method-d-reuse-gate-bypass")
     if args.niah_method_d_reuse_kv_cache:
@@ -728,6 +745,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--niah-decode-keep-tail", type=int, default=None)
     parser.add_argument("--niah-chunk-size", type=int, default=2048)
     parser.add_argument("--niah-method-d-gate-margin", type=float, default=1.10)
+    parser.add_argument("--niah-method-d-source-gate-margin", type=float, default=0.0)
+    parser.add_argument("--niah-method-d-source-gate-margin-threshold", type=float, default=0.0)
     parser.add_argument("--niah-method-d-token-window", type=int, default=0)
     parser.add_argument("--niah-method-d-layer-min", type=int, default=0)
     parser.add_argument("--niah-method-d-layer-max", type=int, default=None)
@@ -765,6 +784,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--niah-method-d-source-fusion-focus-only", action="store_true")
     parser.add_argument("--niah-method-d-source-cue-focus", action="store_true")
     parser.add_argument("--niah-method-d-source-cue-answer-tokens", type=int, default=8)
+    parser.add_argument("--niah-method-d-source-cue-order-aware", action="store_true")
+    parser.add_argument("--niah-method-d-source-copy-logit-boost", type=float, default=0.0)
+    parser.add_argument("--niah-method-d-source-copy-max-candidates", type=int, default=4)
     parser.add_argument("--niah-method-d-retrieve-focus-only", action="store_true")
     parser.add_argument("--niah-method-d-retrieve-focus-context-tokens", type=int, default=0)
     parser.add_argument("--niah-method-d-reuse-ttl-tokens", type=int, default=0)
