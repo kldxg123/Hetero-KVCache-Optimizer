@@ -1403,3 +1403,43 @@ Interpretation:
 - Long PPL that crosses the HBM budget is currently blocked under the strict 22 GiB cap by attention temporary memory, not by NIAH retrieval correctness.
 - BF16 attention and SDPA/GQA diagnostics did not solve the long-PPL OOM. SDPA/GQA can pass a 32K NIAH smoke but still OOMs in 14K PPL stress at the 22 GiB cap.
 - Next credible route is not another threshold tweak; it is a true memory-efficient attention path that avoids materializing repeated K/V and large temporary score buffers while preserving source-fusion behavior, or a clearly separated 24 GiB supplementary PPL run.
+
+
+## Workflow2 Round 24 Results: SourceCopy Exactness Reranker
+
+Status: required-depth NIAH passes with an experimental exactness reranker; main source-aware retrieval without SourceCopy remains at `1/2` on the current hard 25/50 seed6004 probe.
+
+Important distinction:
+
+- `dot_product_source_filtered_consensus_reuse` remains the source-aware retrieval mechanism.
+- `SourceCopy` is an optional logit reranker for exact-string copy tasks.
+- SourceCopy results are not counted as pure Query-Key dot-product results.
+
+Negative results:
+
+| Run | Result | Artifact | Note |
+| --- | ---: | --- | --- |
+| late-trigger SourceCopy without active source rerank | `0/2` | `experiments/niah_128k_depth25_50_sourcecopy_relaxed_boost20_v2_gpu3_20260529_154031.json` | Candidates arrived too late. |
+| current bare/source-cue dot-product | `0/2` | `experiments/niah_128k_depth25_50_current_triton_score_context3_gpu3_20260529_160542.json` | Missing source-token overlap filtering/consensus/reuse. |
+| current main source-aware rerank, no SourceCopy | `1/2` | `experiments/niah_128k_depth25_50_current_main_cuefocus_reuse_win64_gpu3_20260529_160927.json` | Correct source retrieved, but one digit can still flip. |
+| win128/no retrieved-KV cache | `1/2` | `experiments/niah_128k_depth25_50_main_win128_nokvcache_gpu3_20260529_161411.json` | Off-by-one is not from token-window 64 or KV reuse. |
+| win128/no-KV-cache interrupted probe | invalid | `experiments/niah_128k_depth50_main_win128_nokvcache_gpu3_20260529_161254.json` | Shared GPU memory spike; not an algorithm result. |
+
+SourceCopy exactness evidence:
+
+| Seed | Depths | Trials | Result | Avg decode | Max reserved | Peak process group | Artifact |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `6004` | 25/50/75/90 | 1 each | `4/4` | `523.5 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed6004_gpu3_20260529_162209.json` |
+| `4242` | 25/50/75/90 | 1 each | `4/4` | `557.6 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed4242_gpu3_20260529_162742.json` |
+
+Memory evidence:
+
+- Active HBM budget stayed bounded with `max_hbm_tokens=12352`.
+- DRAM entries at 128K were `1680`.
+- Process-group peak stayed below the 30 GiB fuse.
+
+Next:
+
+1. Refresh PPL with SourceCopy disabled.
+2. Run a broader NIAH matrix only if GPU memory remains safe.
+3. Keep SourceCopy labeled as an exact-copy reranker in any paper-style report.

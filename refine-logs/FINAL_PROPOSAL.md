@@ -130,3 +130,17 @@ The final project demonstration should include:
 - latency breakdown.
 - clear note on any tests skipped because of shared-server safety.
 
+
+
+## Round 24 Addendum: Source-Aware And SourceCopy Labeling
+
+The strongest current NIAH path uses source-aware metadata in addition to token-level Query-Key retrieval:
+
+- source-token lexical overlap reranking;
+- source-cue focus on answer spans after template cues;
+- cue-context physical retrieval, currently `context=3`;
+- TTL/KV reuse for selected source-cue windows.
+
+This is non-oracle metadata. It may use prompt/template cue tokens, but it must not use the hidden answer label or the known needle range.
+
+An optional `SourceCopy` logit reranker can boost the next token from retrieved source-cue answer spans. It is disabled by default and must be reported as an experimental exact-string reranker, not as pure KV retrieval.

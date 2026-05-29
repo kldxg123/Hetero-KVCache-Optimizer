@@ -1139,3 +1139,54 @@ Interpretation:
 - Long PPL that crosses the HBM budget is currently blocked under the strict 22 GiB cap by attention temporary memory, not by NIAH retrieval correctness.
 - BF16 attention and SDPA/GQA diagnostics did not solve the long-PPL OOM. SDPA/GQA can pass a 32K NIAH smoke but still OOMs in 14K PPL stress at the 22 GiB cap.
 - Next credible route is not another threshold tweak; it is a true memory-efficient attention path that avoids materializing repeated K/V and large temporary score buffers while preserving source-fusion behavior, or a clearly separated 24 GiB supplementary PPL run.
+
+
+## Workflow2 Round 24: Automatic Review And SourceCopy Exactness Reranker
+
+Mode:
+
+- Switched to fully automatic review/test loop.
+- Continued to separate main retrieval, oracle/diagnostic paths, and experimental exactness rerankers.
+- Used physical GPU3 when safe, with a 22 GiB PyTorch cap and a 30 GiB process-group memory fuse.
+
+Failed / negative ideas:
+
+| Idea | Result | Artifact | Interpretation |
+|---|---:|---|---|
+| Late-trigger SourceCopy on weak retrieval | `0/2` on 128K 25/50 | `experiments/niah_128k_depth25_50_sourcecopy_relaxed_boost20_v2_gpu3_20260529_154031.json` | Copy candidates appeared too late because the source-aware reranker was not active. |
+| Bare current dot-product + source cue focus | `0/2` on 128K 25/50 | `experiments/niah_128k_depth25_50_current_triton_score_context3_gpu3_20260529_160542.json` | Missing source-token overlap filtering, consensus, and reuse; retrieval degenerated to non-source chunks. |
+| Current main reranker without SourceCopy | `1/2` on 128K 25/50 | `experiments/niah_128k_depth25_50_current_main_cuefocus_reuse_win64_gpu3_20260529_160927.json` | Correct source window is retrieved, but exact numeric copying can still flip one digit (`690144` -> `691144`). |
+| win128/no-KV-cache variant | `1/2` on 128K 25/50 | `experiments/niah_128k_depth25_50_main_win128_nokvcache_gpu3_20260529_161411.json` | The off-by-one digit is not caused by `token_window=64` or retrieved K/V cache reuse. |
+| Interrupted win128/no-KV-cache probe | invalid | `experiments/niah_128k_depth50_main_win128_nokvcache_gpu3_20260529_161254.json` | Shared-GPU scheduling failure; not counted as algorithm evidence. |
+
+Implemented candidate:
+
+- Added optional `SourceCopy` logit reranking.
+- It boosts next-token candidates extracted from retrieved source-cue answer spans.
+- It is disabled by default.
+- It is an experimental exact-string reranker and must not be reported as pure Query-Key dot-product retrieval.
+
+Evidence:
+
+| Run | Result | Avg decode | Max reserved | Peak process group | Artifact |
+|---|---:|---:|---:|---:|---|
+| seed6004 required depths, 1 trial/depth | `4/4` | `523.5 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed6004_gpu3_20260529_162209.json` |
+| seed4242 required depths, 1 trial/depth | `4/4` | `557.6 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed4242_gpu3_20260529_162742.json` |
+
+Mechanism evidence:
+
+- Active HBM KV remained bounded with `max_hbm_tokens=12352`.
+- DRAM compressed entries were `1680` at 128K.
+- Source-aware retrieval logged `dot_product_source_filtered_consensus_reuse`.
+- SourceCopy emitted explicit `[SourceCopy] step=... candidates=...` logs.
+- The experimental reranker fixed exact digit fidelity while keeping memory below the 30 GiB fuse.
+
+Current ranked ideas:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Main source-aware reranker + experimental SourceCopy exactness | Strongest NIAH exact-copy result so far | Current NIAH candidate, label separately |
+| 2 | Broader multi-trial/multi-seed NIAH | Check whether SourceCopy is robust beyond two seeds | Next when GPU is safe |
+| 3 | PPL refresh with SourceCopy disabled | Ensure general semantic loss is still measured without NIAH-only copy help | Next |
+| 4 | Full ablation table: no SourceCopy vs SourceCopy | Quantify exactness gain from the reranker | Needed for paper |
+| 5 | True 4090 retest | Convert A100 memory-envelope evidence into hardware evidence | Later |

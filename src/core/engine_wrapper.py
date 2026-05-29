@@ -12,7 +12,7 @@ and zero-fragmentation in-place rolling.
 import gc
 import os
 import torch
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from transformers.cache_utils import DynamicCache
 
 from src.memory.manager import HeteroKVManager
@@ -57,6 +57,8 @@ class FusedHeteroCache(DynamicCache):
         enable_method_d: bool = False,  # Query-aware retrieval
         method_d_alpha: float = 1.0,  # 1.0 = pure query-aware, 0.0 = pure historical
         method_d_gate_margin: float = 1.10,
+        method_d_source_gate_margin: float = 0.0,
+        method_d_source_gate_margin_threshold: float = 0.0,
         method_d_token_window: int = 0,
         method_d_layer_min: int = 0,
         method_d_layer_max: Optional[int] = None,
@@ -81,6 +83,7 @@ class FusedHeteroCache(DynamicCache):
         method_d_source_fusion_focus_only: bool = False,
         method_d_source_cue_focus: bool = False,
         method_d_source_cue_answer_tokens: int = 8,
+        method_d_source_cue_order_aware: bool = False,
         method_d_retrieve_focus_only: bool = False,
         method_d_retrieve_focus_context_tokens: int = 0,
         method_d_reuse_ttl_tokens: int = 0,
@@ -108,6 +111,10 @@ class FusedHeteroCache(DynamicCache):
         self.enable_method_d = enable_method_d
         self.method_d_alpha = method_d_alpha
         self.method_d_gate_margin = method_d_gate_margin
+        self.method_d_source_gate_margin = max(0.0, float(method_d_source_gate_margin))
+        self.method_d_source_gate_margin_threshold = max(
+            0.0, float(method_d_source_gate_margin_threshold)
+        )
         self.method_d_token_window = int(method_d_token_window)
         self.method_d_layer_min = int(method_d_layer_min)
         self.method_d_layer_max = None if method_d_layer_max is None else int(method_d_layer_max)
@@ -140,6 +147,7 @@ class FusedHeteroCache(DynamicCache):
         self.method_d_source_fusion_focus_only = bool(method_d_source_fusion_focus_only)
         self.method_d_source_cue_focus = bool(method_d_source_cue_focus)
         self.method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
+        self.method_d_source_cue_order_aware = bool(method_d_source_cue_order_aware)
         self.method_d_retrieve_focus_only = bool(method_d_retrieve_focus_only)
         self.method_d_retrieve_focus_context_tokens = max(
             0, int(method_d_retrieve_focus_context_tokens)
@@ -209,6 +217,7 @@ class FusedHeteroCache(DynamicCache):
             f"{' source_overlap_required' if self.method_d_require_source_overlap else ''}"
             f"{f' focus_bias={self.method_d_focus_bias:.3f}' if self.method_d_focus_bias else ''}"
             f"{f' source_fusion={self.method_d_source_fusion_alpha:.3f}' if self.method_d_source_fusion_alpha else ''}"
+            f"{' source_cue_order=ON' if self.method_d_source_cue_order_aware else ''}"
             f"{' retrieve_focus_only' if self.method_d_retrieve_focus_only else ''}"
             f"{f' reuse_ttl={self.method_d_reuse_ttl_tokens}' if self.method_d_reuse_ttl_tokens else ''}"
             f"{f' source_gate_bypass>={self.method_d_source_gate_bypass_threshold:.3f}' if self.method_d_source_gate_bypass_threshold else ''}"
@@ -251,6 +260,7 @@ class FusedHeteroCache(DynamicCache):
             ),
             method_d_source_cue_focus=self.method_d_source_cue_focus,
             method_d_source_cue_answer_tokens=self.method_d_source_cue_answer_tokens,
+            method_d_source_cue_order_aware=self.method_d_source_cue_order_aware,
             method_d_retrieve_focus_only=self.method_d_retrieve_focus_only,
             method_d_retrieve_focus_context_tokens=(
                 self.method_d_retrieve_focus_context_tokens
@@ -370,7 +380,7 @@ class FusedHeteroCache(DynamicCache):
                     gate_info = self._method_d_source_gate_shortcut(selected_chunks)
                     if gate_info is None:
                         use_retrieval, gate_info = self._method_d_gate_retrieval(
-                            query_k, out_k, manager
+                            query_k, out_k, manager, selected_chunks=selected_chunks
                         )
                     else:
                         use_retrieval = True
@@ -517,7 +527,7 @@ class FusedHeteroCache(DynamicCache):
             "selected_chunks": selected_chunks,
             "dram_best": float(gate_info.get("dram_best", float("nan"))),
             "hbm_best": float(gate_info.get("hbm_best", float("nan"))),
-            "margin": float(self.method_d_gate_margin),
+            "margin": float(gate_info.get("margin", self.method_d_gate_margin)),
             "retrieval_bias": float(self.method_d_retrieval_bias),
             "score_reduce": self.method_d_score_reduce,
             "query_history_len": int(query_history_len),
@@ -535,6 +545,7 @@ class FusedHeteroCache(DynamicCache):
             "source_fusion_alpha": float(self.method_d_source_fusion_alpha),
             "source_fusion_focus_only": bool(self.method_d_source_fusion_focus_only),
             "source_cue_focus": bool(self.method_d_source_cue_focus),
+            "source_cue_order_aware": bool(self.method_d_source_cue_order_aware),
             "retrieve_focus_only": bool(self.method_d_retrieve_focus_only),
             "retrieve_focus_context_tokens": int(
                 self.method_d_retrieve_focus_context_tokens
@@ -550,6 +561,10 @@ class FusedHeteroCache(DynamicCache):
             "reuse_source_threshold": float(self.method_d_reuse_source_threshold),
             "source_gate_bypass_threshold": float(
                 self.method_d_source_gate_bypass_threshold
+            ),
+            "source_gate_margin": float(self.method_d_source_gate_margin),
+            "source_gate_margin_threshold": float(
+                self.method_d_source_gate_margin_threshold
             ),
             "source_gate_bypass": bool(gate_info.get("source_gate_bypass", False)),
             "source_gate_best": float(gate_info.get("source_gate_best", 0.0)),
@@ -618,20 +633,61 @@ class FusedHeteroCache(DynamicCache):
                 answer_tokens=self.method_d_source_cue_answer_tokens,
             )
 
-    def _method_d_effective_source_fusion_alpha(self, selected_chunks) -> float:
-        base = float(self.method_d_source_fusion_alpha)
-        threshold = float(self.method_d_source_fusion_source_threshold)
-        if base <= 0.0 or threshold <= 0.0:
-            return base
+    def set_method_d_generated_token_ids(self, token_ids: Optional[torch.Tensor]) -> None:
+        """Expose decode prefix tokens for order-aware source-cue focus."""
+        if self._manager is not None and hasattr(
+            self._manager, "set_method_d_generated_token_ids"
+        ):
+            self._manager.set_method_d_generated_token_ids(token_ids)
+
+    def get_method_d_copy_next_token_ids(
+        self,
+        generated_token_ids: Optional[torch.Tensor] = None,
+        max_candidates: int = 4,
+    ) -> List[int]:
+        """Return source-copy next-token candidates from retrieved Method-D spans."""
+        if self._manager is None or not hasattr(
+            self._manager, "get_method_d_copy_next_token_ids"
+        ):
+            return []
+        return self._manager.get_method_d_copy_next_token_ids(
+            generated_token_ids=generated_token_ids,
+            max_candidates=max_candidates,
+        )
+
+    def _method_d_best_source_score(self, selected_chunks) -> float:
         best_source_score = 0.0
         for chunk in selected_chunks or []:
             try:
-                best_source_score = max(best_source_score, float(chunk.get("source_token_score", 0.0)))
+                best_source_score = max(
+                    best_source_score, float(chunk.get("source_token_score", 0.0))
+                )
             except Exception:
                 continue
+        return best_source_score
+
+    def _method_d_effective_source_fusion_alpha(self, selected_chunks) -> float:
+        base = float(self.method_d_source_fusion_alpha)
+        threshold = float(self.method_d_source_fusion_source_threshold)
+        if not self.method_d_source_cue_focus:
+            return 0.0
+        if base <= 0.0 or threshold <= 0.0:
+            return base
+        best_source_score = self._method_d_best_source_score(selected_chunks)
         if best_source_score < threshold:
             return float(self.method_d_source_fusion_low_alpha)
         return base
+
+    def _method_d_effective_gate_margin(self, selected_chunks) -> Tuple[float, float]:
+        margin = float(self.method_d_gate_margin)
+        source_margin = float(self.method_d_source_gate_margin)
+        threshold = float(self.method_d_source_gate_margin_threshold)
+        if not self.method_d_source_cue_focus:
+            return margin, 0.0
+        best_source_score = self._method_d_best_source_score(selected_chunks)
+        if source_margin > 0.0 and threshold > 0.0 and best_source_score >= threshold:
+            margin = source_margin
+        return margin, best_source_score
 
     def record_attention_probe(
         self,
@@ -754,6 +810,7 @@ class FusedHeteroCache(DynamicCache):
         query_states: torch.Tensor,
         hbm_key_states: torch.Tensor,
         manager: HeteroKVManager,
+        selected_chunks=None,
     ) -> Tuple[bool, Dict[str, float]]:
         """Use retrieved DRAM chunks only when they beat active HBM QK evidence."""
         try:
@@ -776,13 +833,24 @@ class FusedHeteroCache(DynamicCache):
             hbm_k = hbm_key_states.detach().float()
             hbm_scores = QueryAwareRetriever._token_dot_scores(q, hbm_k)
             hbm_best = float(hbm_scores.reshape(-1).max().item())
-            return dram_best >= hbm_best * self.method_d_gate_margin, {
+            margin, best_source_score = self._method_d_effective_gate_margin(selected_chunks)
+            return dram_best >= hbm_best * margin, {
                 "dram_best": dram_best,
                 "hbm_best": hbm_best,
+                "margin": margin,
+                "source_gate_best": best_source_score,
+                "source_gate_margin": float(self.method_d_source_gate_margin),
+                "source_gate_margin_threshold": float(
+                    self.method_d_source_gate_margin_threshold
+                ),
             }
         except Exception as exc:
             print(f"  [Method D][WARN] retrieval gate failed open: {exc}")
-            return True, {"dram_best": float("nan"), "hbm_best": float("nan")}
+            return True, {
+                "dram_best": float("nan"),
+                "hbm_best": float("nan"),
+                "margin": float(self.method_d_gate_margin),
+            }
 
     def get_seq_length(self, layer_idx: int = 0) -> int:
         # Report HBM pool + DRAM swap-in tokens so attention mask dimensions match.
@@ -1051,6 +1119,8 @@ def build_fused_cache(
     enable_method_d: bool = True,
     method_d_alpha: float = 1.0,
     method_d_gate_margin: float = 1.10,
+    method_d_source_gate_margin: float = 0.0,
+    method_d_source_gate_margin_threshold: float = 0.0,
     method_d_token_window: int = 0,
     method_d_layer_min: int = 0,
     method_d_layer_max: Optional[int] = None,
@@ -1075,6 +1145,7 @@ def build_fused_cache(
     method_d_source_fusion_focus_only: bool = False,
     method_d_source_cue_focus: bool = False,
     method_d_source_cue_answer_tokens: int = 8,
+    method_d_source_cue_order_aware: bool = False,
     method_d_retrieve_focus_only: bool = False,
     method_d_retrieve_focus_context_tokens: int = 0,
     method_d_reuse_ttl_tokens: int = 0,
@@ -1111,6 +1182,8 @@ def build_fused_cache(
         enable_method_d=enable_method_d,
         method_d_alpha=method_d_alpha,
         method_d_gate_margin=method_d_gate_margin,
+        method_d_source_gate_margin=method_d_source_gate_margin,
+        method_d_source_gate_margin_threshold=method_d_source_gate_margin_threshold,
         method_d_token_window=method_d_token_window,
         method_d_layer_min=method_d_layer_min,
         method_d_layer_max=method_d_layer_max,
@@ -1135,6 +1208,7 @@ def build_fused_cache(
         method_d_source_fusion_focus_only=method_d_source_fusion_focus_only,
         method_d_source_cue_focus=method_d_source_cue_focus,
         method_d_source_cue_answer_tokens=method_d_source_cue_answer_tokens,
+        method_d_source_cue_order_aware=method_d_source_cue_order_aware,
         method_d_retrieve_focus_only=method_d_retrieve_focus_only,
         method_d_retrieve_focus_context_tokens=method_d_retrieve_focus_context_tokens,
         method_d_reuse_ttl_tokens=method_d_reuse_ttl_tokens,

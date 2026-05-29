@@ -57,12 +57,23 @@ def heterokv_safe_attention_forward(
         from transformers.models.llama.modeling_llama import repeat_kv
 
     q_len = query.shape[-2]
+    source_fusion_active = bool(retrieval_source_fusion_alpha and retrieved_count > 0)
+    allow_sdpa_source_fusion = os.getenv(
+        "HETEROKV_DECODE_SDPA_SOURCE_FUSION", "0"
+    ) in {"1", "true", "True"}
     use_decode_sdpa = (
         q_len == 1
         and os.getenv("HETEROKV_DECODE_SDPA", "0") in {"1", "true", "True"}
-        and not (retrieval_source_fusion_alpha and retrieved_count > 0)
+        and (not source_fusion_active or allow_sdpa_source_fusion)
     )
-    if use_decode_sdpa:
+    use_decode_grouped = (
+        q_len == 1
+        and not use_decode_sdpa
+        and module.num_key_value_groups != 1
+        and query.shape[1] == key.shape[1] * module.num_key_value_groups
+        and os.getenv("HETEROKV_DECODE_GROUPED_ATTN", "1") not in {"0", "false", "False"}
+    )
+    if use_decode_sdpa or use_decode_grouped:
         key_states = key
         value_states = value
     else:
@@ -152,10 +163,85 @@ def heterokv_safe_attention_forward(
             attn_output = F.scaled_dot_product_attention(
                 query, key_states, value_states, **sdpa_kwargs
             )
+        if source_fusion_active and allow_sdpa_source_fusion:
+            n = min(int(retrieved_count), kv_len)
+            alpha = max(0.0, min(1.0, float(retrieval_source_fusion_alpha)))
+            if n > 0 and alpha > 0.0:
+                bsz, num_heads, _, head_dim = query.shape
+                if module.num_key_value_groups != 1 and query.shape[1] == key_states.shape[1] * module.num_key_value_groups:
+                    num_kv_heads = key_states.shape[1]
+                    groups = module.num_key_value_groups
+                    q_grouped = query.reshape(bsz, num_kv_heads, groups, q_len, head_dim)
+                    source_k = key_states[..., :n, :].unsqueeze(2)
+                    source_scores = torch.matmul(
+                        q_grouped.float(), source_k.float().transpose(-2, -1)
+                    ) * scaling
+                    source_scores = source_scores.reshape(bsz, num_heads, q_len, n)
+                else:
+                    source_k = repeat_kv(key_states[..., :n, :], module.num_key_value_groups)
+                    source_scores = torch.matmul(
+                        query.float(), source_k.float().transpose(2, 3)
+                    ) * scaling
+                if retrieval_bias:
+                    source_scores = source_scores + float(retrieval_bias)
+                if retrieval_focus_mask is not None:
+                    focus = retrieval_focus_mask.reshape(-1)[:n].to(
+                        source_scores.device, dtype=torch.bool
+                    )
+                    if focus.numel() == n and focus.any():
+                        if retrieval_nonfocus_penalty:
+                            source_scores = source_scores - float(retrieval_nonfocus_penalty)
+                        if retrieval_focus_bias:
+                            focus_bias = torch.zeros(
+                                n, dtype=source_scores.dtype, device=source_scores.device
+                            )
+                            focus_bias[focus] = (
+                                float(retrieval_focus_bias)
+                                + float(retrieval_nonfocus_penalty)
+                            )
+                            source_scores = source_scores + focus_bias.view(1, 1, 1, n)
+                        if retrieval_source_fusion_focus_only:
+                            source_scores = source_scores.masked_fill(
+                                ~focus.view(1, 1, 1, n),
+                                torch.finfo(source_scores.dtype).min,
+                            )
+                source_weights = nn.functional.softmax(
+                    source_scores, dim=-1, dtype=torch.float32
+                ).to(query.dtype)
+                if module.num_key_value_groups != 1 and query.shape[1] == value_states.shape[1] * module.num_key_value_groups:
+                    num_kv_heads = value_states.shape[1]
+                    groups = module.num_key_value_groups
+                    source_weights_grouped = source_weights.reshape(
+                        bsz, num_kv_heads, groups, q_len, n
+                    )
+                    source_v = value_states[..., :n, :].unsqueeze(2)
+                    source_output = torch.matmul(
+                        source_weights_grouped.float(), source_v.float()
+                    ).to(query.dtype)
+                    source_output = source_output.reshape(bsz, num_heads, q_len, head_dim)
+                else:
+                    source_v = repeat_kv(value_states[..., :n, :], module.num_key_value_groups)
+                    source_output = torch.matmul(
+                        source_weights.float(), source_v.float()
+                    ).to(query.dtype)
+                attn_output = attn_output.mul(1.0 - alpha).add(source_output, alpha=alpha)
         attn_output = attn_output.transpose(1, 2).contiguous()
         return attn_output, None
 
-    if decode_fp32:
+    if use_decode_grouped:
+        bsz, num_heads, _, head_dim = query.shape
+        num_kv_heads = key_states.shape[1]
+        groups = module.num_key_value_groups
+        q_grouped = query.reshape(bsz, num_kv_heads, groups, q_len, head_dim)
+        k_grouped = key_states.unsqueeze(2)
+        if decode_fp32:
+            scores = torch.matmul(
+                q_grouped.float(), k_grouped.float().transpose(-2, -1)
+            ) * scaling
+        else:
+            scores = torch.matmul(q_grouped, k_grouped.transpose(-2, -1)) * scaling
+        scores = scores.reshape(bsz, num_heads, q_len, kv_len)
+    elif decode_fp32:
         scores = torch.matmul(
             query.float(), key_states.float().transpose(2, 3)
         ) * scaling
@@ -213,7 +299,20 @@ def heterokv_safe_attention_forward(
 
     attn_weights = nn.functional.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
     attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
-    if decode_fp32:
+    if use_decode_grouped:
+        bsz, num_heads, _, head_dim = query.shape
+        num_kv_heads = value_states.shape[1]
+        groups = module.num_key_value_groups
+        weights_grouped = attn_weights.reshape(bsz, num_kv_heads, groups, q_len, kv_len)
+        v_grouped = value_states.unsqueeze(2)
+        if decode_fp32:
+            attn_output = torch.matmul(
+                weights_grouped.float(), v_grouped.float()
+            ).to(query.dtype)
+        else:
+            attn_output = torch.matmul(weights_grouped, v_grouped)
+        attn_output = attn_output.reshape(bsz, num_heads, q_len, head_dim)
+    elif decode_fp32:
         attn_output = torch.matmul(attn_weights.float(), value_states.float()).to(query.dtype)
     else:
         attn_output = torch.matmul(attn_weights, value_states)
@@ -233,13 +332,29 @@ def heterokv_safe_attention_forward(
             source_weights = nn.functional.softmax(
                 source_scores, dim=-1, dtype=torch.float32
             ).to(query.dtype)
-            source_values = value_states[..., :n, :]
-            if decode_fp32:
-                source_output = torch.matmul(
-                    source_weights.float(), source_values.float()
-                ).to(query.dtype)
+            if use_decode_grouped:
+                bsz, num_heads, _, head_dim = query.shape
+                num_kv_heads = value_states.shape[1]
+                groups = module.num_key_value_groups
+                source_weights_grouped = source_weights.reshape(
+                    bsz, num_kv_heads, groups, q_len, n
+                )
+                source_values = value_states[..., :n, :].unsqueeze(2)
+                if decode_fp32:
+                    source_output = torch.matmul(
+                        source_weights_grouped.float(), source_values.float()
+                    ).to(query.dtype)
+                else:
+                    source_output = torch.matmul(source_weights_grouped, source_values)
+                source_output = source_output.reshape(bsz, num_heads, q_len, head_dim)
             else:
-                source_output = torch.matmul(source_weights, source_values)
+                source_values = value_states[..., :n, :]
+                if decode_fp32:
+                    source_output = torch.matmul(
+                        source_weights.float(), source_values.float()
+                    ).to(query.dtype)
+                else:
+                    source_output = torch.matmul(source_weights, source_values)
             attn_output = attn_output.mul(1.0 - alpha).add(source_output, alpha=alpha)
 
     attn_output = attn_output.transpose(1, 2).contiguous()
@@ -348,6 +463,22 @@ def _heterokv_attention_forward(
         past_key_values._pending_key_positions = (
             key_positions.detach() if key_positions is not None else None
         )
+
+    if (
+        query_states.shape[-2] == 1
+        and torch.cuda.is_available()
+        and os.getenv("HETEROKV_DECODE_EMPTY_CACHE", "0") in {"1", "true", "True"}
+    ):
+        # Diagnostic/low-memory mode for long decode evaluations under tight
+        # per-process caps.  The returned hidden state is already computed; the
+        # short-KV tensors and SDPA workspaces should not stay reserved across
+        # decoder layers when this mode is explicitly requested.
+        try:
+            del key_states, value_states
+            del query_states
+        except UnboundLocalError:
+            pass
+        torch.cuda.empty_cache()
 
     attn_output = attn_output.reshape(*input_shape, -1).contiguous()
     attn_output = self.o_proj(attn_output)

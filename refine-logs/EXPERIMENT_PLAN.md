@@ -300,3 +300,29 @@ Do not run while other users are active.
 ### Real RTX 4090 Retest
 
 Required only if the final claim needs real 4090 latency, not just A100 under a 4090-like memory envelope.
+
+
+## Round 24 Addendum: Current Strong NIAH Test Configuration
+
+Use a safe physical GPU selected by current occupancy. If the user has approved switching GPUs, another physical GPU may be used only when the projected total memory is safe. Kill the current HeteroKV process group if it exceeds 30 GiB.
+
+Current strongest NIAH configuration:
+
+- `keep_tail=8192`
+- `method_d_top_k=4`
+- `score_reduce=query_top_r_mean`
+- `query_history_tokens=64`
+- `method_d_source_token_boost=2.5`
+- `method_d_require_source_overlap=True`
+- `method_d_source_cue_focus=True`
+- `method_d_retrieve_focus_context_tokens=3`
+- `method_d_source_fusion_alpha=0.65`
+- `method_d_token_window=64`
+- `method_d_reuse_ttl_tokens=6`
+- `method_d_reuse_source_threshold=35`
+- `method_d_reuse_kv_cache=True`
+
+Optional exactness reranker:
+
+- `method_d_source_copy_logit_boost=20`
+- Report this as `experimental SourceCopy`, not as the pure retrieval result.

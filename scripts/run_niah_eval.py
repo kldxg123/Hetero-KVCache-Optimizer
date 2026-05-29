@@ -121,6 +121,8 @@ def build_cache(args, model, mode: str, needle_range=None):
         adaptive_self_healing=False,
         enable_method_d=(mode in retrieval_modes),
         method_d_gate_margin=args.method_d_gate_margin,
+        method_d_source_gate_margin=args.method_d_source_gate_margin,
+        method_d_source_gate_margin_threshold=args.method_d_source_gate_margin_threshold,
         method_d_token_window=args.method_d_token_window,
         method_d_layer_min=args.method_d_layer_min,
         method_d_layer_max=args.method_d_layer_max,
@@ -145,6 +147,7 @@ def build_cache(args, model, mode: str, needle_range=None):
         method_d_source_fusion_focus_only=args.method_d_source_fusion_focus_only,
         method_d_source_cue_focus=args.method_d_source_cue_focus,
         method_d_source_cue_answer_tokens=args.method_d_source_cue_answer_tokens,
+        method_d_source_cue_order_aware=args.method_d_source_cue_order_aware,
         method_d_retrieve_focus_only=args.method_d_retrieve_focus_only,
         method_d_retrieve_focus_context_tokens=args.method_d_retrieve_focus_context_tokens,
         method_d_reuse_ttl_tokens=args.method_d_reuse_ttl_tokens,
@@ -319,6 +322,12 @@ def run_one_case(tokenizer, model, prompt, cache, args):
         total_decode_steps = decode_suffix + args.max_new_tokens
         decode_start = time.time()
         for step in range(total_decode_steps):
+            if hasattr(cache, "set_method_d_generated_token_ids"):
+                if generated_ids:
+                    generated_prefix = torch.cat(generated_ids, dim=-1)[0].detach().cpu()
+                else:
+                    generated_prefix = None
+                cache.set_method_d_generated_token_ids(generated_prefix)
             pos = prefill_end + step
             position_ids = torch.tensor([[pos]], dtype=torch.long, device=device)
             cache_position = torch.tensor([pos], dtype=torch.long, device=device)
@@ -335,7 +344,28 @@ def run_one_case(tokenizer, model, prompt, cache, args):
                 past_key_values=cache,
                 use_cache=True,
             )
-            next_token = outputs.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+            logits = outputs.logits[:, -1, :]
+            if (
+                args.method_d_source_copy_logit_boost > 0.0
+                and hasattr(cache, "get_method_d_copy_next_token_ids")
+            ):
+                if generated_ids:
+                    generated_prefix = torch.cat(generated_ids, dim=-1)[0].detach().cpu()
+                else:
+                    generated_prefix = None
+                candidates = cache.get_method_d_copy_next_token_ids(
+                    generated_prefix,
+                    max_candidates=args.method_d_source_copy_max_candidates,
+                )
+                print(f"[SourceCopy] step={step} candidates={candidates}")
+                if candidates:
+                    candidate_ids = torch.tensor(
+                        candidates, dtype=torch.long, device=logits.device
+                    )
+                    logits[:, candidate_ids] = logits[:, candidate_ids] + float(
+                        args.method_d_source_copy_logit_boost
+                    )
+            next_token = logits.argmax(dim=-1, keepdim=True)
             if step < decode_suffix - 1:
                 current = input_ids[:, prefill_end + step + 1:prefill_end + step + 2]
             else:
@@ -538,6 +568,8 @@ def main():
     parser.add_argument("--decode-keep-tail", type=int, default=None)
     parser.add_argument("--chunk-size", type=int, default=2048)
     parser.add_argument("--method-d-gate-margin", type=float, default=1.10)
+    parser.add_argument("--method-d-source-gate-margin", type=float, default=0.0)
+    parser.add_argument("--method-d-source-gate-margin-threshold", type=float, default=0.0)
     parser.add_argument("--method-d-token-window", type=int, default=0)
     parser.add_argument("--method-d-layer-min", type=int, default=0)
     parser.add_argument("--method-d-layer-max", type=int, default=None)
@@ -575,6 +607,9 @@ def main():
     parser.add_argument("--method-d-source-fusion-focus-only", action="store_true")
     parser.add_argument("--method-d-source-cue-focus", action="store_true")
     parser.add_argument("--method-d-source-cue-answer-tokens", type=int, default=8)
+    parser.add_argument("--method-d-source-cue-order-aware", action="store_true")
+    parser.add_argument("--method-d-source-copy-logit-boost", type=float, default=0.0)
+    parser.add_argument("--method-d-source-copy-max-candidates", type=int, default=4)
     parser.add_argument("--method-d-retrieve-focus-only", action="store_true")
     parser.add_argument("--method-d-retrieve-focus-context-tokens", type=int, default=0)
     parser.add_argument("--method-d-reuse-ttl-tokens", type=int, default=0)

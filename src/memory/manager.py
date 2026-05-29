@@ -73,6 +73,7 @@ class HeteroKVManager:
         method_d_allow_source_before_min_position: bool = False,
         method_d_source_cue_focus: bool = False,
         method_d_source_cue_answer_tokens: int = 8,
+        method_d_source_cue_order_aware: bool = False,
         method_d_retrieve_focus_only: bool = False,
         method_d_retrieve_focus_context_tokens: int = 0,
         method_d_reuse_ttl_tokens: int = 0,
@@ -154,6 +155,7 @@ class HeteroKVManager:
         )
         self._method_d_source_cue_focus = bool(method_d_source_cue_focus)
         self._method_d_source_cue_answer_tokens = max(1, int(method_d_source_cue_answer_tokens))
+        self._method_d_source_cue_order_aware = bool(method_d_source_cue_order_aware)
         self._method_d_retrieve_focus_only = bool(method_d_retrieve_focus_only)
         self._method_d_retrieve_focus_context_tokens = max(
             0, int(method_d_retrieve_focus_context_tokens)
@@ -168,6 +170,7 @@ class HeteroKVManager:
         self._method_d_reuse_cache: Dict[int, Dict[str, Any]] = {}
         self._method_d_range_votes: Dict[Tuple[int, int], int] = {}
         self._method_d_oracle_range: Optional[Tuple[int, int]] = None
+        self._method_d_generated_token_ids: Optional[torch.Tensor] = None
         self._diagnostic_bf16_dram = bool(diagnostic_bf16_dram)
         self._method_d_retriever = None
         if enable_method_d:
@@ -440,6 +443,115 @@ class HeteroKVManager:
         if answer_tokens is not None:
             self._method_d_source_cue_answer_tokens = max(1, int(answer_tokens))
 
+    def set_method_d_generated_token_ids(self, token_ids: Optional[torch.Tensor]) -> None:
+        """Register already generated decode tokens for order-aware source focus."""
+        if token_ids is None:
+            self._method_d_generated_token_ids = None
+            return
+        self._method_d_generated_token_ids = token_ids.detach().reshape(-1).cpu().long()
+
+    def _method_d_apply_order_aware_focus(
+        self,
+        mask: torch.Tensor,
+        chunk_ids: List[Optional[int]],
+        answer_start: int,
+        answer_end: int,
+    ) -> bool:
+        if (
+            not self._method_d_source_cue_order_aware
+            or self._method_d_generated_token_ids is None
+            or answer_start >= answer_end
+        ):
+            return False
+        answer = [
+            int(token)
+            for token in chunk_ids[answer_start:answer_end]
+            if token is not None
+        ]
+        if not answer:
+            return False
+        generated = [int(token) for token in self._method_d_generated_token_ids.tolist()]
+        max_prefix = min(len(generated), max(0, len(answer) - 1))
+        matched = 0
+        for width in range(max_prefix, 0, -1):
+            if generated[-width:] == answer[:width]:
+                matched = width
+                break
+        if generated and matched == 0:
+            return False
+        focus_idx = answer_start + min(matched, len(answer) - 1)
+        if 0 <= focus_idx < mask.numel():
+            mask[focus_idx] = True
+            return True
+        return False
+
+    def get_method_d_copy_next_token_ids(
+        self,
+        generated_token_ids: Optional[torch.Tensor] = None,
+        layer_idx: Optional[int] = None,
+        max_candidates: int = 4,
+    ) -> List[int]:
+        """Return next-token copy candidates from retrieved source-cue answer spans."""
+        if self._source_token_ids is None or not self._source_cue_token_ids:
+            return []
+        if layer_idx is None:
+            position_tensors = list(self._last_retrieved_positions.values())
+        else:
+            pos = self._last_retrieved_positions.get(int(layer_idx))
+            position_tensors = [pos] if pos is not None else []
+        if not position_tensors:
+            return []
+
+        ids = self._source_token_ids.reshape(-1).cpu().long()
+        total = int(ids.numel())
+        answer_tokens = max(1, int(self._method_d_source_cue_answer_tokens))
+        generated = (
+            []
+            if generated_token_ids is None
+            else [int(token) for token in generated_token_ids.reshape(-1).cpu().tolist()]
+        )
+        scores: Dict[int, int] = {}
+        seen_spans = set()
+        for pos_tensor in position_tensors:
+            if pos_tensor is None:
+                continue
+            for raw_pos in pos_tensor.detach().reshape(-1).cpu().long().tolist():
+                pos = int(raw_pos)
+                if pos < 0 or pos >= total:
+                    continue
+                for cue in self._source_cue_token_ids:
+                    cue_len = len(cue)
+                    if cue_len <= 0:
+                        continue
+                    answer_start_min = max(0, pos - answer_tokens + 1)
+                    answer_start_max = min(pos, total - 1)
+                    for answer_start in range(answer_start_min, answer_start_max + 1):
+                        cue_start = answer_start - cue_len
+                        if cue_start < 0:
+                            continue
+                        if ids[cue_start:answer_start].tolist() != cue:
+                            continue
+                        answer_end = min(total, answer_start + answer_tokens)
+                        span_key = (answer_start, answer_end)
+                        if span_key in seen_spans:
+                            continue
+                        seen_spans.add(span_key)
+                        answer = [int(token) for token in ids[answer_start:answer_end].tolist()]
+                        if not answer:
+                            continue
+                        max_prefix = min(len(generated), max(0, len(answer) - 1))
+                        matched = 0
+                        for width in range(max_prefix, 0, -1):
+                            if generated[-width:] == answer[:width]:
+                                matched = width
+                                break
+                        next_token = int(answer[min(matched, len(answer) - 1)])
+                        scores[next_token] = scores.get(next_token, 0) + 1
+        if not scores:
+            return []
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        return [int(token) for token, _ in ranked[: max(1, int(max_candidates))]]
+
     def _method_d_chunk_source_cue_score(self, chunk_key: str) -> float:
         """Return a non-oracle cue score when a chunk contains a registered cue."""
         if self._source_token_ids is None or not self._source_cue_token_ids:
@@ -562,7 +674,10 @@ class HeteroKVManager:
                     start = idx + cue_len
                     end = min(len(chunk_ids), start + answer_tokens)
                     if start < end:
-                        mask[start:end] = True
+                        if not self._method_d_apply_order_aware_focus(
+                            mask, chunk_ids, start, end
+                        ):
+                            mask[start:end] = True
         return mask if bool(mask.any().item()) else None
 
     def _build_method_d_source_cue_retrieval_mask(
@@ -600,6 +715,10 @@ class HeteroKVManager:
                     end = min(len(chunk_ids), answer_start + answer_tokens)
                     start = max(0, answer_start - context_tokens)
                     if start < end:
+                        if context_tokens == 0 and self._method_d_apply_order_aware_focus(
+                            mask, chunk_ids, answer_start, end
+                        ):
+                            continue
                         mask[start:end] = True
         return mask if bool(mask.any().item()) else None
 
