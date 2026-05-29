@@ -1668,3 +1668,50 @@ Latency interpretation:
 - It is still far from the refreshed FullKV SDPA wide-memory reference: mean ratio `8.62x`, median ratio `7.53x`.
 - The FullKV baseline uses `62.9629 GiB` torch reserved memory, so it is not a 4090 survival competitor; it is only an A100 speed reference.
 - Workflow3 remains blocked by latency and by the need to refresh PPL under the TTL12 candidate with SourceCopy excluded from general-language PPL.
+
+
+## Workflow2 Round 31 Results: TTL12 PPL Refresh
+
+Status: PPL target passed; runner instrumentation improved.
+
+Code audit and fix:
+
+| Issue | Resolution |
+| --- | --- |
+| PPL runner did not expose/pass `method_d_reuse_ttl_tokens` or `method_d_reuse_source_threshold` | Added CLI args, passed both into `build_fused_cache`, and recorded both in JSON |
+| PPL JSON omitted cache shape parameters | Added `cache_config` with `sink_tokens`, `keep_tail`, and `chunk_size` |
+
+Safety:
+
+- Strict GPU1 attempt stopped with `rc=8` because another user's process appeared during the run.
+- Successful retry used GPU3 with `--allow-other-processes-if-memory-fits`.
+- Other process on GPU3: about `16.306 GiB`.
+- Own-process fuse: `30 GiB`; PyTorch cap: `22 GiB`; reserve: `4 GiB`.
+
+Run:
+
+| Variant | Max tokens | Loss start | Full PPL | HeteroKV PPL | Relative delta | Hetero elapsed | Hetero max reserved | Process peak | Artifact |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| WikiText-2 real PPL, SDPA, SourceCopy disabled, TTL12 recorded | `14336` | `12288` | `2.9706` | `3.0063` | `+1.20%` | `341.2s` | `19.2754 GiB` | `20.248 GiB` | `experiments/ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_allowcoexist_gpu3_20260529_auto.json` |
+
+Configuration:
+
+- `cache_config`: sink `64`, tail `4096`, chunk `2048`.
+- Method-D: `top_k=1`, `gate_margin=5.0`, `score_reduce=max`, `query_history_tokens=1`.
+- SourceCopy/general-language boundary: `source_token_boost=0.0`.
+- TTL recording: `reuse_ttl_tokens=12`, `reuse_source_threshold=35.0`, `reuse_kv_cache=True`.
+
+Mechanism evidence:
+
+- `method_d_event_count=512`.
+- `memory_summary.max_hbm_tokens=6208`.
+- `memory_summary.dram_entries=112`.
+- `memory_summary.dram_bytes=245891072`.
+- Monitor peak total GPU memory `36.569 GiB` includes another user's process; own process peak remained below the `30 GiB` fuse.
+
+Interpretation:
+
+- The TTL12 branch passes the PPL degradation target when SourceCopy is excluded from general-language PPL: `+1.20%`, below the `5%` budget.
+- The PPL claim should be stated as a real WikiText-2 decode-suffix PPL comparison, not as a 128K PPL result.
+- Because `source_token_boost=0` and `reuse_source_threshold=35`, arbitrary PPL chunks are not converted into SourceCopy-style reuse. This is intentional and preserves the separation between exact-copy NIAH and general language modeling.
+- Workflow3 remains blocked by latency, not by current PPL.

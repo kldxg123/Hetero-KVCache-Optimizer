@@ -279,6 +279,8 @@ def build_heterokv_cache(model, args):
         method_d_retrieve_focus_only=args.method_d_retrieve_focus_only,
         method_d_retrieve_focus_context_tokens=args.method_d_retrieve_focus_context_tokens,
         method_d_source_gate_bypass_threshold=args.method_d_source_gate_bypass_threshold,
+        method_d_reuse_ttl_tokens=args.method_d_reuse_ttl_tokens,
+        method_d_reuse_source_threshold=args.method_d_reuse_source_threshold,
         method_d_reuse_gate_bypass=args.method_d_reuse_gate_bypass,
         method_d_reuse_kv_cache=args.method_d_reuse_kv_cache,
         method_d_triton_scoring=args.method_d_triton_scoring,
@@ -471,6 +473,8 @@ def main() -> int:
     parser.add_argument("--method-d-retrieve-focus-only", action="store_true")
     parser.add_argument("--method-d-retrieve-focus-context-tokens", type=int, default=0)
     parser.add_argument("--method-d-source-gate-bypass-threshold", type=float, default=0.0)
+    parser.add_argument("--method-d-reuse-ttl-tokens", type=int, default=0)
+    parser.add_argument("--method-d-reuse-source-threshold", type=float, default=0.0)
     parser.add_argument("--method-d-reuse-gate-bypass", action="store_true")
     parser.add_argument("--method-d-reuse-kv-cache", action="store_true")
     parser.add_argument("--method-d-triton-scoring", action="store_true")
@@ -533,6 +537,11 @@ def main() -> int:
         "gpu_memory_used_before_mb": used_mb,
         "gpu_reserve_gib": args.gpu_reserve_gib,
         "allow_other_processes_if_memory_fits": args.allow_other_processes_if_memory_fits,
+        "cache_config": {
+            "sink_tokens": args.sink_tokens,
+            "keep_tail": args.keep_tail,
+            "chunk_size": args.chunk_size,
+        },
         "method_d_config": {
             "heterokv_self_healing": args.heterokv_self_healing,
             "enable_method_d": args.enable_method_d,
@@ -553,6 +562,8 @@ def main() -> int:
             "retrieve_focus_only": args.method_d_retrieve_focus_only,
             "retrieve_focus_context_tokens": args.method_d_retrieve_focus_context_tokens,
             "source_gate_bypass_threshold": args.method_d_source_gate_bypass_threshold,
+            "reuse_ttl_tokens": args.method_d_reuse_ttl_tokens,
+            "reuse_source_threshold": args.method_d_reuse_source_threshold,
             "reuse_gate_bypass": args.method_d_reuse_gate_bypass,
             "reuse_kv_cache": args.method_d_reuse_kv_cache,
             "triton_scoring": args.method_d_triton_scoring,

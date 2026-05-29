@@ -126,3 +126,28 @@ Update after Round 30:
 - Next automatic priority:
   - Commit/sync/push Round 30 evidence.
   - Refresh PPL with the TTL12 candidate while keeping SourceCopy out of general-language PPL.
+
+Update after Round 31:
+
+- PPL runner audit fixed a parameter-recording gap:
+  - Added `--method-d-reuse-ttl-tokens`.
+  - Added `--method-d-reuse-source-threshold`.
+  - Passed both into `build_fused_cache`.
+  - Added `cache_config` to the PPL JSON.
+- Safety:
+  - First strict GPU1 PPL attempt stopped with `rc=8` after another user's process appeared.
+  - Successful retry used GPU3 with `--allow-other-processes-if-memory-fits`, while preserving the 22 GiB PyTorch cap, 30 GiB own-process fuse, and 4 GiB reserve.
+- TTL12 PPL refresh:
+  - Artifact: `experiments/ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_allowcoexist_gpu3_20260529_auto.json`.
+  - Full PPL: `2.9706`.
+  - HeteroKV PPL: `3.0063`.
+  - Relative delta: `+1.20%`.
+  - Hetero max reserved: `19.2754 GiB`.
+  - Own-process monitor peak: `20.248 GiB`.
+- Claim boundary:
+  - This is real WikiText-2 decode-suffix PPL, not a 128K PPL claim.
+  - SourceCopy was disabled for PPL; exact-copy NIAH and general-language PPL remain separate.
+  - Workflow3 is still blocked by latency ratio, not PPL.
+- Next automatic priority:
+  - Commit/sync/push Round 31 code and evidence.
+  - Continue Workflow2 latency-oriented optimization or run a diagnostic generic-TTL PPL ablation only if it is needed for paper clarity.
