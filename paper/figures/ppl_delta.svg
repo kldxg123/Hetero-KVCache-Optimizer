@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="470" viewBox="0 0 820 470">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="410.0" y="36.0" font-family="Arial, sans-serif" font-size="22" text-anchor="middle" fill="#17202a">WikiText-2 PPL (SourceCopy Disabled)</text>
+<line x1="120" y1="375" x2="780" y2="375" stroke="#34495e"/>
+<line x1="120" y1="70" x2="120" y2="375" stroke="#34495e"/>
+<rect x="240.0" y="112.9" width="90.0" height="262.1" fill="#7f8c8d" />
+<text x="285.0" y="104.9" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">2.97056</text>
+<text x="285.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">FullKV</text>
+<rect x="570.0" y="109.8" width="90.0" height="265.2" fill="#27ae60" />
+<text x="615.0" y="101.8" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">3.00628</text>
+<text x="615.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">HeteroKV</text>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="470" viewBox="0 0 820 470">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="410.0" y="36.0" font-family="Arial, sans-serif" font-size="22" text-anchor="middle" fill="#17202a">Layer-Range Ablation Decode Latency</text>
+<line x1="120" y1="375" x2="780" y2="375" stroke="#34495e"/>
+<line x1="120" y1="70" x2="120" y2="375" stroke="#34495e"/>
+<rect x="149.0" y="109.8" width="73.9" height="265.2" fill="#95a5a6" />
+<text x="186.0" y="101.8" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">131.2 ms</text>
+<text x="186.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">12-27</text>
+<rect x="281.0" y="135.5" width="73.9" height="239.5" fill="#95a5a6" />
+<text x="318.0" y="127.5" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">118.5 ms</text>
+<text x="318.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">16-27</text>
+<rect x="413.0" y="162.3" width="73.9" height="212.7" fill="#95a5a6" />
+<text x="450.0" y="154.3" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">105.2 ms</text>
+<text x="450.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">20-27</text>
+<rect x="545.0" y="162.9" width="73.9" height="212.1" fill="#95a5a6" />
+<text x="582.0" y="154.9" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">104.9 ms</text>
+<text x="582.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">21-27</text>
+<rect x="677.0" y="170.8" width="73.9" height="204.2" fill="#d35400" />
+<text x="714.0" y="162.8" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">101 ms</text>
+<text x="714.0" y="403.0" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#17202a">22-27</text>
+</svg>

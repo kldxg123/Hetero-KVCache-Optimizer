@@ -131,3 +131,23 @@ Claim supported:
 - Diagnostic/oracle runs must use a different color or label from real method
   runs.
 - A100-under-cap results must not be labeled as RTX 4090 measured latency.
+
+## Generated Initial Figures
+
+Initial figures have been generated from downloaded real artifacts with
+`paper/scripts/build_workflow3_figures.py`.
+
+Generated files:
+
+- `paper/data/workflow3_summary.json`
+- `paper/figures/niah_required_accuracy.svg`
+- `paper/figures/latency_ratio.svg`
+- `paper/figures/ppl_delta.svg`
+- `paper/figures/memory_summary.svg`
+- `paper/figures/layer_ablation_latency.svg`
+
+Remaining gap:
+
+- `memory_summary.svg` is a peak/summary plot, not a per-prefill-chunk memory
+  curve. A true memory-curve figure still requires extracting or rerunning
+  per-chunk memory logs.

@@ -34,19 +34,24 @@ Local review completed:
 - High-risk phrases are present only in explicit boundary or disallowed-claim
   sections.
 - Long lines are limited to result-table artifact paths.
+- Workflow3 summary artifacts were downloaded from the remote experiment
+  directory into `outputs/workflow3_artifacts/`.
+- Standard-library SVG figure generation was added in
+  `paper/scripts/build_workflow3_figures.py`.
+- Initial summary figures and `paper/data/workflow3_summary.json` were
+  generated from real artifacts.
 
 Remote status:
 
 - Remote project: `/home/app-ahr/Hetero-KVCache-Optimizer`.
 - Branch observed before remote write block:
   `codex/workflow2-128k-survival-20260528`.
-- Remote `paper/` directory was empty before Workflow3 material generation.
-- SSH/SFTP write attempts were blocked by permission approval timeouts.
+- Workflow3 paper workspace commit was pushed:
+  `cc6a41c Start Workflow3 paper workspace`.
 
 ## Next Automatic Step After Permission Is Available
 
-1. Upload local `paper/*.md` files to remote `paper/`.
-2. Run remote `git add -N paper/*.md && git diff --check -- paper`.
-3. Commit only `paper/*.md` and relevant Workflow3 state docs.
-4. Push the Workflow3 paper-start commit.
-5. Continue with paper figure script generation and claim audit.
+1. Upload generated figure scripts/data/SVGs to remote `paper/`.
+2. Run remote `git diff --check` on Workflow3 paper files.
+3. Commit only Workflow3 paper/state artifacts.
+4. Continue with paper figure audit and missing-experiment decisions.
