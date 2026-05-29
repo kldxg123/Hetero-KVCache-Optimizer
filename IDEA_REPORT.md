@@ -1455,3 +1455,43 @@ Decision:
 - The TTL12 branch still passes the PPL degradation target with SourceCopy disabled: `+1.20% <= 5%`.
 - Because `source_token_boost=0` and `reuse_source_threshold=35`, TTL reuse is recorded but not allowed to turn arbitrary general-language chunks into SourceCopy-style cached chunks. This keeps the PPL claim separate from exact-copy NIAH claims.
 - Workflow3 is still not ready: quality and PPL are now strong for the documented branches, but latency remains about `8.62x` mean versus the refreshed wide-memory FullKV SDPA reference.
+
+## Workflow2 Round 32: TTL24 And Short-Answer Display Ablations
+
+Automatic review target:
+
+- Test whether increasing selected-key reuse TTL beyond `12` gives meaningful latency gains.
+- Separately test whether NIAH display should use a shorter `max_new_tokens`, because the answer is a 6-digit code and the model tends to repeat the code when allowed to generate 24 tokens.
+
+TTL24 algorithm ablation:
+
+| Variant | Seed | Depths / Trials | Accuracy | Mean decode | Median decode | Mean elapsed | Mean prefill | Peak process memory | Artifact |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---|
+| SourceCopy TTL24, `max_new_tokens=24` | `6004` | 25%/50%, 2 each | `4/4` | `369.8 ms/step` | `373.8 ms/step` | `57.8s` | `48.6s` | `21.8262 GiB` | `experiments/niah_128k_depth25_50_trials2_sourcecopy_ttl24_seed6004_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Decode | Elapsed |
+|---:|---:|---|---:|---:|---:|
+| 25% | 0 | `847754` | True | `372.9 ms/step` | `59.25s` |
+| 25% | 1 | `690144` | True | `356.0 ms/step` | `56.82s` |
+| 50% | 0 | `792275` | True | `375.6 ms/step` | `57.63s` |
+| 50% | 1 | `439778` | True | `374.6 ms/step` | `57.57s` |
+
+Interpretation:
+
+- TTL24 preserves correctness on this small seed6004 25%/50% check.
+- Compared with the same four rows in the TTL12 full seed6004 run, decode improves only modestly, roughly from `388.8` to `369.8 ms/step`.
+- Do not promote TTL24 to the main claim yet without full-depth/multi-seed validation; the signal is positive but small.
+
+Short-answer display ablation:
+
+| Variant | Seed | Depths / Trials | Accuracy | Mean decode | Mean elapsed | Generated tokens | Artifact |
+|---|---:|---|---:|---:|---:|---:|---|
+| SourceCopy TTL24, `max_new_tokens=8` | `6004` | 25%/50%, 2 each | `4/4` | `483.8 ms/step` | `53.1s` | `9` per row | `experiments/niah_128k_depth25_50_trials2_sourcecopy_ttl24_maxnew8_seed6004_driver_gpu3_20260529_auto.json` |
+
+Decision:
+
+- `max_new_tokens=8` is a valid demonstration setting for a 6-digit NIAH answer because all four rows still contain the target code.
+- It improves end-to-end elapsed time by avoiding repeated answer generation, but it does not improve per-token latency; therefore it must be reported as an evaluation/display setting, not an algorithmic speedup.
+- For paper-grade latency, keep reporting `decode_ms/step` separately from end-to-end task time.

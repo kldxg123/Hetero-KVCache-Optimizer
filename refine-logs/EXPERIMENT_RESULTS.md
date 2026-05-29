@@ -1715,3 +1715,36 @@ Interpretation:
 - The PPL claim should be stated as a real WikiText-2 decode-suffix PPL comparison, not as a 128K PPL result.
 - Because `source_token_boost=0` and `reuse_source_threshold=35`, arbitrary PPL chunks are not converted into SourceCopy-style reuse. This is intentional and preserves the separation between exact-copy NIAH and general language modeling.
 - Workflow3 remains blocked by latency, not by current PPL.
+
+
+## Workflow2 Round 32 Results: TTL24 And Short-Answer Display Ablations
+
+Status: TTL24 is weakly positive; short-answer max-new-token control is useful for demos but not a per-token speedup.
+
+TTL24 algorithm ablation:
+
+| Variant | Seed | Depths | Trials | Result | Mean decode | Median decode | Mean elapsed | Mean prefill | Monitor peak | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| SourceCopy TTL24, `max_new_tokens=24` | `6004` | 25/50 | 2 each | `4/4` | `369.8 ms/step` | `373.8 ms/step` | `57.8s` | `48.6s` | `21.8262 GiB` | `experiments/niah_128k_depth25_50_trials2_sourcecopy_ttl24_seed6004_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Decode | Elapsed |
+| ---: | ---: | --- | ---: | ---: | ---: |
+| 25% | 0 | `847754` | True | `372.9 ms/step` | `59.25s` |
+| 25% | 1 | `690144` | True | `356.0 ms/step` | `56.82s` |
+| 50% | 0 | `792275` | True | `375.6 ms/step` | `57.63s` |
+| 50% | 1 | `439778` | True | `374.6 ms/step` | `57.57s` |
+
+Short-answer display ablation:
+
+| Variant | Seed | Depths | Trials | Result | Mean decode | Mean elapsed | Generated tokens | Monitor peak | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| SourceCopy TTL24, `max_new_tokens=8` | `6004` | 25/50 | 2 each | `4/4` | `483.8 ms/step` | `53.1s` | `9` per row | `21.8262 GiB` | `experiments/niah_128k_depth25_50_trials2_sourcecopy_ttl24_maxnew8_seed6004_driver_gpu3_20260529_auto.json` |
+
+Interpretation:
+
+- TTL24 is a small positive latency ablation on seed6004 25/50: it preserves `4/4` and slightly reduces decode relative to the same TTL12 seed/depth rows.
+- The gain is not large enough to replace TTL12 as the main validated candidate without full-depth, multi-seed confirmation.
+- `max_new_tokens=8` is useful for NIAH demos because the answer is a short code and all tested rows still answered correctly.
+- `max_new_tokens=8` must not be reported as per-token acceleration; it lowers task elapsed time by avoiding repeated output, while `decode_ms/step` is higher in this small run.

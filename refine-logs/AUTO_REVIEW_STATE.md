@@ -151,3 +151,27 @@ Update after Round 31:
 - Next automatic priority:
   - Commit/sync/push Round 31 code and evidence.
   - Continue Workflow2 latency-oriented optimization or run a diagnostic generic-TTL PPL ablation only if it is needed for paper clarity.
+
+Update after Round 32:
+
+- TTL24 small latency ablation completed:
+  - Artifact: `experiments/niah_128k_depth25_50_trials2_sourcecopy_ttl24_seed6004_driver_gpu3_20260529_auto.json`.
+  - Result: `4/4` on seed6004, 128K, depths 25/50, 2 trials each.
+  - Mean decode: `369.8 ms/step`.
+  - Mean elapsed: `57.8s`.
+  - Monitor peak: `21.8262 GiB`.
+- Short-answer display ablation completed:
+  - Artifact: `experiments/niah_128k_depth25_50_trials2_sourcecopy_ttl24_maxnew8_seed6004_driver_gpu3_20260529_auto.json`.
+  - Result: `4/4`.
+  - Mean elapsed: `53.1s`.
+  - Mean decode: `483.8 ms/step`.
+- Claim boundary:
+  - TTL24 is a weak positive latency idea, not yet a promoted main configuration.
+  - `max_new_tokens=8` is a fair demo setting for a 6-digit code answer, but it is not an algorithmic per-token speedup.
+- GitHub push state:
+  - Remote local commit `27e26bb` exists for Round 31.
+  - Push is pending because `github.com:443` was unreachable on the retry.
+- Next automatic priority:
+  - Commit Round 32 docs locally on the remote.
+  - Retry GitHub push when connectivity returns.
+  - Choose between full TTL24 validation and a deeper structural latency idea; do not claim Workflow3 readiness yet.
