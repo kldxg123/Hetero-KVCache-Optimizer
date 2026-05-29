@@ -1558,3 +1558,40 @@ Interpretation:
 - Combined driver-based SourceCopy exactness evidence: `12/12` under the same monitored workflow driver.
 - Some cases overlap in seed/depth family with earlier one-trial legacy runs, so do not overcount all historical rows as independent.
 - Next useful automatic step is either seed7777 required-depth trials2 or a latency breakdown, depending on GPU safety.
+
+
+## Workflow2 Round 28 Results: SourceCopy Required-Depth Robustness, Seed7777
+
+Run:
+
+| Variant | Seed | Depths | Trials | Result | Monitor peak | Max reserved | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| source-aware retrieval + SourceCopy boost20 | `7777` | 25/50/75/90 | 2 each | `8/8` | `21.8262 GiB` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_boost20_seed7777_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Elapsed |
+| ---: | ---: | --- | ---: | ---: |
+| 25% | 0 | `285761` | True | `77.49s` |
+| 25% | 1 | `668808` | True | `74.22s` |
+| 50% | 0 | `877347` | True | `73.84s` |
+| 50% | 1 | `178244` | True | `73.07s` |
+| 75% | 0 | `640303` | True | `71.02s` |
+| 75% | 1 | `676631` | True | `61.91s` |
+| 90% | 0 | `057936` | True | `73.64s` |
+| 90% | 1 | `781509` | True | `73.64s` |
+
+Shared mechanism evidence:
+
+- `max_hbm_tokens=12352`
+- `dram_entries=1680`
+- `method_d_event_count=512` per row
+- monitor did not kill the run
+- total elapsed `603.3s`, mean row elapsed `72.4s`
+
+Interpretation:
+
+- Driver-based SourceCopy-assisted required-depth robustness now includes seed4242 `8/8` and seed7777 `8/8` with 2 trials per depth.
+- Including the seed6004 25/50 ablation rows, the monitored driver-based SourceCopy exactness evidence is `20/20`; however seed6004 still lacks a full 25/50/75/90 2-trial driver rerun.
+- This result is strong NIAH exact-copy evidence under the 22 GiB cap and 30 GiB fuse, but remains separate from the pure dot-product retrieval claim.
+- Latency breakdown and fair baseline refresh remain the main blockers before asking about Workflow3.

@@ -1296,3 +1296,37 @@ Decision:
 
 - This strengthens the SourceCopy-assisted NIAH exactness evidence under the same 22 GiB memory envelope.
 - It still does not turn SourceCopy into the main pure retrieval claim; it is a copy-task reranker layered above source-aware retrieval.
+
+## Workflow2 Round 28: SourceCopy Required-Depth Robustness, Second Full Seed
+
+Extended driver-based robustness run:
+
+| Path | Seed | Length | Depths / Trials | Accuracy | Peak process memory | Monitor killed | Artifact |
+|---|---:|---:|---|---:|---:|---:|---|
+| Source-aware retrieval + SourceCopy boost20 | `7777` | 128K | 25%/50%/75%/90%, 2 trials each | `8/8` | `21.8262 GiB` | False | `experiments/niah_128k_required4_trials2_sourcecopy_boost20_seed7777_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Row elapsed |
+|---:|---:|---|---:|---:|
+| 25% | 0 | `285761` | True | `77.49s` |
+| 25% | 1 | `668808` | True | `74.22s` |
+| 50% | 0 | `877347` | True | `73.84s` |
+| 50% | 1 | `178244` | True | `73.07s` |
+| 75% | 0 | `640303` | True | `71.02s` |
+| 75% | 1 | `676631` | True | `61.91s` |
+| 90% | 0 | `057936` | True | `73.64s` |
+| 90% | 1 | `781509` | True | `73.64s` |
+
+Mechanism/memory:
+
+- `max_reserved_gib=21.3262`, monitor peak `21.8262 GiB`.
+- `max_hbm_tokens=12352`, `dram_entries=1680`, `method_d_event_count=512` for each row.
+- Total run time `603.3s`; mean row elapsed `72.4s`.
+
+Decision:
+
+- Driver-based SourceCopy-assisted required-depth robustness now has two full seeds with 2 trials per depth: seed4242 `8/8` and seed7777 `8/8`.
+- Together with the driver-based seed6004 25%/50% ablation (`4/4`), the monitored SourceCopy exactness evidence is `20/20`, but seed6004 is not yet a full required-depth 2-trial seed in this driver format.
+- Keep the claim boundary strict: this is an experimental exact-copy reranker layered on source-aware retrieval, not the pure token-level dot-product retrieval result.
+- Next automatic Workflow2 step should prioritize latency breakdown and fair baseline refresh, unless GPU safety suggests a seed6004 full required-depth driver rerun is cheaper and more useful first.

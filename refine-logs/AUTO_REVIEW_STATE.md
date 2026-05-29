@@ -72,3 +72,18 @@ Update after Round 27:
 - Next candidates:
   - Run seed7777 required-depth trials2 if GPU3 remains safe.
   - Or run latency breakdown if enough exactness evidence is considered sufficient.
+
+Update after Round 28:
+
+- SourceCopy robustness run completed through the workflow driver:
+  - Seed `7777`, 128K, depths 25/50/75/90, 2 trials each.
+  - Result `8/8`, monitor peak `21.8262 GiB`, no monitor kill.
+- Driver-based SourceCopy evidence is now:
+  - Seed6004 25/50 trials2: `4/4`.
+  - Seed4242 required-depth trials2: `8/8`.
+  - Seed7777 required-depth trials2: `8/8`.
+- Combined monitored SourceCopy exactness rows: `20/20`, with the boundary that seed6004 is not yet a full required-depth 2-trial driver rerun.
+- Next automatic priority:
+  - Commit/sync this evidence.
+  - Retry GitHub push when available.
+  - Check GPU safety, then run latency breakdown/fair baseline refresh or a seed6004 full required-depth driver rerun.
