@@ -1915,3 +1915,35 @@ Interpretation:
 - 99% is a meaningful optional depth pass for the promoted HeteroKV path.
 - 0% should not be used as evidence against HeteroKV under the current NIAH template, because the wide-memory FullKV baseline also fails it.
 - If 0% is required for a paper table, redesign the NIAH generator/query so FullKV first passes 0%; then rerun HeteroKV.
+
+
+## Workflow2 Round 36 Results: Generate Smoke
+
+Status: generate compatibility passed after fixing a workflow argument mismatch.
+
+Workflow repair:
+
+| Issue | Fix | Verification |
+| --- | --- | --- |
+| `run_experiment.py` passed `--attn-implementation eager` to `run_stage2_smoke.py`, but the smoke script did not accept that argument | Added `--attn-implementation` to `run_stage2_smoke.py` and used it in model loading | `py_compile` passed; stage-1 tests `16 passed` |
+
+Generate smoke:
+
+| Target tokens | Actual input tokens | Output check | Elapsed | Max allocated | Max reserved | `max_hbm_tokens` | DRAM entries | DRAM bytes |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `2048` | `1585` | True | `1.14s` | `15.10 GiB` | `15.36 GiB` | `4160` | `0` | `0` |
+| `4096` | `3144` | True | `1.72s` | `16.24 GiB` | `17.07 GiB` | `4160` | `28` | `32,897,536` |
+| `8192` | `6273` | True | `1.79s` | `18.06 GiB` | `20.01 GiB` | `4160` | `28` | `126,817,600` |
+
+Run metadata:
+
+- Tracker: `experiments/experiment_tracker_stage2_generate_smoke_2k4k8k_after_fix_20260529_auto.json`.
+- Child output: `experiments/stage2_smoke.json`.
+- External monitor peak: `15.18 GiB`.
+- Monitor killed: False.
+- Status: `ok`.
+
+Interpretation:
+
+- HF `model.generate(..., past_key_values=cache)` compatibility is intact for 2K/4K/8K smoke contexts under the 22 GiB cap.
+- This is not a substitute for the 128K NIAH manual-decode latency result; it is an API compatibility sanity check.

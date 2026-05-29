@@ -1624,3 +1624,36 @@ Interpretation:
 - 0% is not a valid HeteroKV-specific failure under this corpus/query template because FullKV also fails both seed6004 0% rows. The needle range was `[30,36]`, and FullKV generated `000000` instead of the target code.
 - The sink1024 diagnostic is rejected. Increasing the sink budget did not repair 0% and broke 99% in the tested configuration, so it should not be promoted.
 - Paper tables should report required depths 25/50/75/90 as the main benchmark and may report 99% as an additional edge-depth pass. A 0% table row should be marked non-discriminative unless the NIAH prompt/template is redesigned and FullKV passes it.
+
+## Workflow2 Round 36: Generate Smoke And Workflow Repair
+
+Automatic review target:
+
+- Verify the ordinary Hugging Face `generate()` path still works with a HeteroKV cache under the 22 GiB cap.
+- Catch workflow-script bugs before Workflow3.
+
+Workflow bug fixed:
+
+- `scripts/run_experiment.py` passed `--attn-implementation eager` into `scripts/run_stage2_smoke.py`.
+- `run_stage2_smoke.py` did not accept that argument, so the first smoke attempt exited with argparse code `2` before model execution.
+- Fix: add `--attn-implementation` to `run_stage2_smoke.py` and pass it into `AutoModelForCausalLM.from_pretrained`.
+- Verification: remote `py_compile` passed and `tests/test_heterokv_stage1.py` passed `16/16`.
+
+Generate smoke result:
+
+| Length target | Actual tokens | Generated contains target phrase | Elapsed | Max allocated | Max reserved | Active HBM max tokens |
+|---:|---:|---:|---:|---:|---:|---:|
+| `2048` | `1585` | True | `1.14s` | `15.10 GiB` | `15.36 GiB` | `4160` |
+| `4096` | `3144` | True | `1.72s` | `16.24 GiB` | `17.07 GiB` | `4160` |
+| `8192` | `6273` | True | `1.79s` | `18.06 GiB` | `20.01 GiB` | `4160` |
+
+Artifact:
+
+- Tracker: `experiments/experiment_tracker_stage2_generate_smoke_2k4k8k_after_fix_20260529_auto.json`
+- Child output: `experiments/stage2_smoke.json`
+- External monitor peak: `15.18 GiB`; no 30 GiB fuse trigger.
+
+Decision:
+
+- `generate()` compatibility is covered for short/medium contexts under the HeteroKV cache protocol.
+- This smoke is an engineering compatibility result, not the promoted 128K latency result.

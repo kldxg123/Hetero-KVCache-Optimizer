@@ -161,7 +161,7 @@ def run_smoke(args):
         torch_dtype=torch.bfloat16,
         device_map={"": "cuda:0"},
         trust_remote_code=True,
-        attn_implementation="eager",
+        attn_implementation=args.attn_implementation,
     )
     model.eval()
     patched = patch_qwen2_attention_for_heterokv(model)
@@ -228,6 +228,11 @@ def main():
     parser.add_argument("--cap-gib", type=float, default=22.0)
     parser.add_argument("--allow-busy", action="store_true")
     parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument(
+        "--attn-implementation",
+        choices=["eager", "sdpa", "flash_attention_2"],
+        default="eager",
+    )
     parser.add_argument("--lengths", type=int, nargs="+", default=[2048, 4096, 8192])
     parser.add_argument("--sink-tokens", type=int, default=64)
     parser.add_argument("--keep-tail", type=int, default=2048)

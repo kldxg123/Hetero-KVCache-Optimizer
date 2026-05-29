@@ -260,3 +260,23 @@ Update after Round 35:
 - Current Workflow3 readiness:
   - Required NIAH depths, 99% edge depth, memory, PPL boundary, latency target, and mechanism logs are strong enough to prepare a paper draft.
   - Remaining optional pre-Workflow3 item: compact generate compatibility table under the promoted config, if the user wants one more sanity row before writing.
+
+Update after Round 36:
+
+- Generate compatibility smoke completed after fixing a workflow script bug.
+- Bug:
+  - `run_experiment.py` passed `--attn-implementation eager` to `run_stage2_smoke.py`.
+  - `run_stage2_smoke.py` did not accept the argument, causing argparse exit code `2`.
+- Fix:
+  - Added `--attn-implementation` to `run_stage2_smoke.py`.
+  - Passed it into `AutoModelForCausalLM.from_pretrained`.
+  - Remote compile and stage-1 tests passed.
+- Smoke result:
+  - 2K target: actual `1585` tokens, generated `HETEROKV_SMOKE_OK`, max reserved `15.36 GiB`.
+  - 4K target: actual `3144` tokens, generated target phrase, max reserved `17.07 GiB`.
+  - 8K target: actual `6273` tokens, generated `HETEROKV_SMOKE_OK.`, max reserved `20.01 GiB`.
+  - External monitor peak: `15.18 GiB`.
+  - No 30 GiB fuse trigger.
+- Current Workflow3 readiness:
+  - Workflow2 has enough real evidence to ask the user whether to begin Workflow3/paper drafting.
+  - Required caveats for Workflow3: source-aware NIAH is separate from pure dot-product; PPL remains SourceCopy-disabled; A100 latency is under a 22 GiB memory envelope, not a real 4090 latency measurement.
