@@ -1232,3 +1232,35 @@ Updated current ranking:
 | 3 | SDPA PPL refresh with SourceCopy disabled | General semantic-loss evidence | Valid, within budget at `+1.35%` |
 | 4 | Broader NIAH ablation matrix | Separate retrieval, source-aware rerank, and copy rerank contributions | Next GPU task |
 | 5 | Latency breakdown and fair baseline | Decide whether Triton/kernel work is scientifically justified | Still blocking Workflow3 |
+
+## Workflow2 Round 26: Driver-Based SourceCopy Ablation
+
+Infrastructure fix:
+
+- `scripts/run_experiment.py` now forwards the NIAH attention backend, source-gate margin, source-cue order-aware flag, SourceCopy logit boost, SourceCopy candidate count, and gate-bypass flags to `scripts/run_niah_eval.py`.
+- Remote validation passed before GPU tests: `16 passed`.
+- Remote commit created: `396379c Pass NIAH SourceCopy args through workflow driver`.
+- GitHub push for `396379c` is still pending because the server could not reach `github.com:443`; the commit exists in the remote working repository.
+
+Controlled ablation under the 22 GiB cap and 30 GiB own-process fuse:
+
+| Path | Length | Depths / Trials | Accuracy | Peak process memory | Monitor killed | Artifact |
+|---|---:|---|---:|---:|---:|---|
+| Source-aware retrieval, no SourceCopy | 128K | 25%/50%, 2 trials each | `3/4` | `21.8242 GiB` | False | `experiments/niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json` |
+| Source-aware retrieval + SourceCopy boost20 | 128K | 25%/50%, 2 trials each | `4/4` | `21.8262 GiB` | False | `experiments/niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json` |
+
+Per-case exactness:
+
+| Depth | Trial | Target | No SourceCopy | SourceCopy |
+|---:|---:|---|---|---|
+| 25% | 0 | `847754` | correct | correct |
+| 25% | 1 | `690144` | failed, generated `69144...` | correct |
+| 50% | 0 | `792275` | correct | correct |
+| 50% | 1 | `439778` | correct | correct |
+
+Mechanism notes:
+
+- Both runs used source-aware token-level Method-D retrieval with `query_top_r_mean`, query history 64, consensus 8, source overlap required, source fusion enabled, focus-only retrieval, and K/V reuse.
+- Both runs reported `max_hbm_tokens=12352`, `dram_entries=1680`, and `method_d_event_count=512` per row.
+- The SourceCopy improvement is therefore an exact-string decoding/reranking gain on top of the same retrieval substrate, not a memory-budget change.
+- Report SourceCopy as an experimental exact-copy reranker. Do not merge it into the pure Query-Key dot-product claim.

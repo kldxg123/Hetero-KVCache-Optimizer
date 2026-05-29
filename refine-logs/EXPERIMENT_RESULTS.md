@@ -1489,3 +1489,36 @@ Automatic review action prepared locally:
 - Change `scripts/run_ppl_eval.py` default `--attn-implementation` from `eager` to `sdpa`.
 - Rationale: the latest invalid OOM was caused by eager FullKV attention, while the valid PPL run used SDPA. Keeping SDPA as the default prevents future automatic runs from repeating a known test-configuration failure.
 - This prepared patch still needs to be synchronized to the remote repository after SSH access is restored.
+
+
+## Workflow2 Round 26 Results: SourceCopy Ablation Through Workflow Driver
+
+Driver fix:
+
+- `scripts/run_experiment.py` now forwards NIAH SourceCopy and source-aware gate parameters to `scripts/run_niah_eval.py`.
+- Remote validation after the driver fix: `16 passed`.
+- Remote commit: `396379c Pass NIAH SourceCopy args through workflow driver`.
+- GitHub push is pending because the server-side connection to `github.com:443` failed.
+
+Controlled 128K ablation:
+
+| Variant | Result | Monitor peak | Max reserved | Active HBM tokens | DRAM entries | Artifact |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| source-aware retrieval, SourceCopy disabled | `3/4` | `21.8242 GiB` | `21.3262 GiB` | `12352` | `1680` | `experiments/niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json` |
+| source-aware retrieval, SourceCopy boost20 | `4/4` | `21.8262 GiB` | `21.3262 GiB` | `12352` | `1680` | `experiments/niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json` |
+
+Per-case comparison:
+
+| Depth | Trial | Target code | No SourceCopy generated | No SourceCopy correct | SourceCopy generated | SourceCopy correct |
+| ---: | ---: | --- | --- | ---: | --- | ---: |
+| 25% | 0 | `847754` | contains `847754` | True | starts `847754` | True |
+| 25% | 1 | `690144` | `69144...` | False | starts `690144` | True |
+| 50% | 0 | `792275` | contains `792275` | True | starts `792275` | True |
+| 50% | 1 | `439778` | contains `439778` | True | starts `439778` | True |
+
+Interpretation:
+
+- This is a clean ablation on the same 4 cases and same memory envelope.
+- SourceCopy fixes the exact-copy off-by-one/omission failure without increasing peak memory.
+- It strengthens the case for a two-layer method description: approximate retrieval locates relevant source spans, while SourceCopy is an optional exact-string reranker for copy-heavy tasks.
+- The result must remain separate from pure dot-product retrieval and separate from PPL, where SourceCopy is disabled.

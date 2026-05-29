@@ -36,3 +36,27 @@ Current blocker:
 - Remote SSH access is not available from the local environment without clarifying the unlabeled fields in `服务器信息.txt`.
 - Do not brute-force username/password combinations.
 - After access is restored, first sync the local docs and prepared PPL default patch, then rerun py_compile/unit tests remotely before GPU experiments.
+
+Update 2026-05-29:
+
+- Chinese labels in `服务器信息.txt` are parsed with the full-width colon `\uff1a`.
+- SSH authentication succeeded once and the local prepared files were synchronized to the remote repository.
+- Remote `py_compile` and unit tests passed: `16 passed`.
+- Remote commit was created: `4049ef6 Record auto review state and default PPL SDPA`.
+- Push confirmation is still pending because the SSH port became unreachable immediately afterward.
+- Current network check: TCP connection to `182.92.245.8:2222` failed.
+- On recovery, first run `git log --oneline -3`, compare `HEAD` with `origin/codex/workflow2-128k-survival-20260528`, then push if needed. Do not rerun GPU tests before confirming repository state.
+
+Update 2026-05-29 later:
+
+- Remote branch was advanced and pushed through `4049ef6`.
+- Driver fix commit was created remotely: `396379c Pass NIAH SourceCopy args through workflow driver`.
+- Push for `396379c` is still pending due server-side GitHub HTTPS connectivity failure.
+- Driver-based 128K ablation completed:
+  - No SourceCopy: `3/4`, monitor peak `21.8242 GiB`.
+  - SourceCopy boost20: `4/4`, monitor peak `21.8262 GiB`.
+- Next automatic step after documenting this round:
+  - Sync these report updates to remote.
+  - Commit them after py_compile/tests.
+  - Retry GitHub push when `github.com:443` is reachable.
+  - Continue with broader SourceCopy multi-seed/multi-trial or latency breakdown, depending on GPU safety.
