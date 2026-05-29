@@ -1522,3 +1522,39 @@ Interpretation:
 - SourceCopy fixes the exact-copy off-by-one/omission failure without increasing peak memory.
 - It strengthens the case for a two-layer method description: approximate retrieval locates relevant source spans, while SourceCopy is an optional exact-string reranker for copy-heavy tasks.
 - The result must remain separate from pure dot-product retrieval and separate from PPL, where SourceCopy is disabled.
+
+
+## Workflow2 Round 27 Results: SourceCopy Required-Depth Robustness
+
+Run:
+
+| Variant | Seed | Depths | Trials | Result | Monitor peak | Max reserved | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| source-aware retrieval + SourceCopy boost20 | `4242` | 25/50/75/90 | 2 each | `8/8` | `21.8262 GiB` | `21.3262 GiB` | `experiments/niah_128k_required4_trials2_sourcecopy_boost20_seed4242_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Elapsed |
+| ---: | ---: | --- | ---: | ---: |
+| 25% | 0 | `620966` | True | `81.16s` |
+| 25% | 1 | `542870` | True | `74.15s` |
+| 50% | 0 | `722971` | True | `73.63s` |
+| 50% | 1 | `028225` | True | `74.22s` |
+| 75% | 0 | `123937` | True | `72.72s` |
+| 75% | 1 | `045052` | True | `72.33s` |
+| 90% | 0 | `855966` | True | `72.11s` |
+| 90% | 1 | `542598` | True | `72.60s` |
+
+Shared mechanism evidence:
+
+- `max_hbm_tokens=12352`
+- `dram_entries=1680`
+- `method_d_event_count=512` per row
+- monitor did not kill the run
+
+Interpretation:
+
+- Driver-based SourceCopy evidence now includes `4/4` on seed6004 25/50 trials2 and `8/8` on seed4242 required-depth trials2.
+- Combined driver-based SourceCopy exactness evidence: `12/12` under the same monitored workflow driver.
+- Some cases overlap in seed/depth family with earlier one-trial legacy runs, so do not overcount all historical rows as independent.
+- Next useful automatic step is either seed7777 required-depth trials2 or a latency breakdown, depending on GPU safety.

@@ -60,3 +60,15 @@ Update 2026-05-29 later:
   - Commit them after py_compile/tests.
   - Retry GitHub push when `github.com:443` is reachable.
   - Continue with broader SourceCopy multi-seed/multi-trial or latency breakdown, depending on GPU safety.
+
+Update after Round 27:
+
+- SourceCopy robustness run completed through the workflow driver:
+  - Seed `4242`, 128K, depths 25/50/75/90, 2 trials each.
+  - Result `8/8`, monitor peak `21.8262 GiB`, no monitor kill.
+- Driver-based SourceCopy evidence is now:
+  - Seed6004 25/50 trials2: `4/4`.
+  - Seed4242 required-depth trials2: `8/8`.
+- Next candidates:
+  - Run seed7777 required-depth trials2 if GPU3 remains safe.
+  - Or run latency breakdown if enough exactness evidence is considered sufficient.

@@ -1264,3 +1264,35 @@ Mechanism notes:
 - Both runs reported `max_hbm_tokens=12352`, `dram_entries=1680`, and `method_d_event_count=512` per row.
 - The SourceCopy improvement is therefore an exact-string decoding/reranking gain on top of the same retrieval substrate, not a memory-budget change.
 - Report SourceCopy as an experimental exact-copy reranker. Do not merge it into the pure Query-Key dot-product claim.
+
+## Workflow2 Round 27: SourceCopy Required-Depth Robustness
+
+Extended driver-based robustness run:
+
+| Path | Seed | Length | Depths / Trials | Accuracy | Peak process memory | Monitor killed | Artifact |
+|---|---:|---:|---|---:|---:|---:|---|
+| Source-aware retrieval + SourceCopy boost20 | `4242` | 128K | 25%/50%/75%/90%, 2 trials each | `8/8` | `21.8262 GiB` | False | `experiments/niah_128k_required4_trials2_sourcecopy_boost20_seed4242_driver_gpu3_20260529_auto.json` |
+
+Rows:
+
+| Depth | Trial | Code | Correct | Row elapsed |
+|---:|---:|---|---:|---:|
+| 25% | 0 | `620966` | True | `81.16s` |
+| 25% | 1 | `542870` | True | `74.15s` |
+| 50% | 0 | `722971` | True | `73.63s` |
+| 50% | 1 | `028225` | True | `74.22s` |
+| 75% | 0 | `123937` | True | `72.72s` |
+| 75% | 1 | `045052` | True | `72.33s` |
+| 90% | 0 | `855966` | True | `72.11s` |
+| 90% | 1 | `542598` | True | `72.60s` |
+
+Mechanism/memory:
+
+- `max_reserved_gib=21.3262`, monitor peak `21.8262 GiB`.
+- `max_hbm_tokens=12352`, `dram_entries=1680`, `method_d_event_count=512` for each row.
+- Total run time `618.3s`; mean row elapsed `74.1s`.
+
+Decision:
+
+- This strengthens the SourceCopy-assisted NIAH exactness evidence under the same 22 GiB memory envelope.
+- It still does not turn SourceCopy into the main pure retrieval claim; it is a copy-task reranker layered above source-aware retrieval.
