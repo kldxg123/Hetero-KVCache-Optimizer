@@ -1452,3 +1452,40 @@ Next:
 | `7777` | 25/50/75/90 | 1 each | `4/4` | `843.5 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed7777_gpu3_20260529_164144.json` |
 
 Aggregate for SourceCopy-assisted required-depth NIAH: `12/12` across seeds `6004`, `4242`, and `7777`, one trial per depth. This strengthens exact-copy NIAH evidence but remains labeled as experimental SourceCopy, separate from pure dot-product retrieval.
+
+
+## Workflow2 Round 25 Results: PPL Refresh With SourceCopy Disabled
+
+Status: valid PPL evidence refreshed for the current Workflow2 candidate, while keeping SourceCopy out of the PPL path.
+
+Invalid / negative test-method result:
+
+| Run | Result | Note |
+| --- | ---: | --- |
+| 14K prefix12288/tail4096 PPL with eager FullKV attention | invalid OOM | FullKV baseline materialized an oversized attention temporary; this is a test configuration failure, not evidence against HeteroKV. |
+
+Valid PPL result:
+
+| Run | FullKV PPL | HeteroKV PPL | Delta | Full max reserved | Hetero max reserved | Retrieval events | Artifact |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 14K prefix12288/tail4096, SDPA, SourceCopy disabled | `2.9669542983` | `3.0070550170` | `+1.35%` | `16.6641 GiB` | `18.2344 GiB` | `512` | `experiments/ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_sourcecopy_disabled_gpu3_20260529_*.json` |
+
+Interpretation:
+
+- This is the current credible PPL point because SourceCopy is disabled and the baseline uses SDPA instead of eager attention.
+- HeteroKV remains within the planned <=5% PPL degradation budget.
+- The run exercises retrieval (`method_d_event_count=512`) and therefore is stronger than the earlier no-DRAM/no-retrieval medium-context PPL point.
+- It does not prove real 4090 latency, and it does not by itself prove SourceCopy exactness generalizes beyond NIAH; those remain separate Workflow2 tasks.
+
+Remaining Workflow2 blockers before a paper-writing Workflow3:
+
+1. Run a broader SourceCopy vs no-SourceCopy NIAH ablation with multiple trials per depth.
+2. Refresh latency breakdown under the same 22 GiB memory envelope.
+3. Record whether the uncapped FullKV baseline can be safely run, or explicitly mark it skipped for shared-server safety.
+4. Preserve optional 0% NIAH as a known boundary weakness unless it is specifically fixed and retested.
+
+Automatic review action prepared locally:
+
+- Change `scripts/run_ppl_eval.py` default `--attn-implementation` from `eager` to `sdpa`.
+- Rationale: the latest invalid OOM was caused by eager FullKV attention, while the valid PPL run used SDPA. Keeping SDPA as the default prevents future automatic runs from repeating a known test-configuration failure.
+- This prepared patch still needs to be synchronized to the remote repository after SSH access is restored.

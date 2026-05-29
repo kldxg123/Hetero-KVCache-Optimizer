@@ -433,8 +433,12 @@ def main() -> int:
     parser.add_argument(
         "--attn-implementation",
         choices=["eager", "sdpa", "flash_attention_2"],
-        default="eager",
-        help="Attention backend for full-KV/PPL probes.",
+        default="sdpa",
+        help=(
+            "Attention backend for full-KV/PPL probes. SDPA is the default "
+            "because eager attention can materialize oversized temporaries and "
+            "turn a PPL comparison into a test-configuration OOM."
+        ),
     )
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--modes", nargs="+", choices=["full", "heterokv"], default=["full", "heterokv"])

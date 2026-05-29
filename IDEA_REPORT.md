@@ -1201,3 +1201,34 @@ Additional SourceCopy exactness run:
 | seed7777 required depths, 1 trial/depth | `4/4` | `843.5 ms/token` | `21.5801 GiB` | `~22610 MiB` | `experiments/niah_128k_required4_main_win64_sourcecopy_boost20_seed7777_gpu3_20260529_164144.json` |
 
 Aggregate SourceCopy exactness evidence is now `12/12` across seeds `6004`, `4242`, and `7777`, one trial per required depth. The seed7777 50% row was slower (`1703 ms/token`), so latency still needs a fairer breakdown before Workflow3.
+
+## Workflow2 Round 25: Automatic Review PPL Refresh
+
+Mode:
+
+- Continued fully automatic review discipline: record failed ideas, keep diagnostic/oracle paths separate from main results, and avoid claiming SourceCopy as pure dot-product retrieval.
+- Remote execution is currently blocked locally by SSH credential parsing, so this section records the latest completed remote evidence from the active Workflow2 run. Further GPU experiments must resume only after SSH access is restored safely.
+
+PPL refresh:
+
+| Test | Result | FullKV PPL | HeteroKV PPL | Delta | Max reserved | Artifact |
+|---|---:|---:|---:|---:|---:|---|
+| 14K prefix12288/tail4096, SDPA, SourceCopy disabled | pass | `2.9669542983` | `3.0070550170` | `+1.35%` | HeteroKV `18.2344 GiB` | `experiments/ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_sourcecopy_disabled_gpu3_20260529_*.json` |
+
+Interpretation:
+
+- The earlier eager-attention PPL run that OOMed is invalid as an algorithm failure; it failed because the FullKV baseline used the wrong attention implementation and materialized too large a temporary attention tensor.
+- The SDPA PPL refresh is the valid PPL point for this round: SourceCopy is disabled, so this measures general language modeling degradation rather than NIAH exact-string assistance.
+- The relative degradation is within the <=5% semantic-loss budget.
+- `method_d_event_count=512`, so the HeteroKV path exercised retrieval events rather than only no-DRAM tail behavior.
+- This strengthens the semantic-loss claim, but Workflow3 is still not ready until the latency table and broader SourceCopy/no-SourceCopy ablation are refreshed under the same reporting rules.
+
+Updated current ranking:
+
+| Rank | Idea | Purpose | Decision |
+|---:|---|---|---|
+| 1 | Source-aware retrieval + SourceCopy exactness reranker | Strongest 128K required-depth NIAH exactness so far | Keep as experimental exact-copy path |
+| 2 | Source-aware retrieval without SourceCopy | Main approximate cache claim | Needs broader exactness improvement; current hard probe is `1/2` |
+| 3 | SDPA PPL refresh with SourceCopy disabled | General semantic-loss evidence | Valid, within budget at `+1.35%` |
+| 4 | Broader NIAH ablation matrix | Separate retrieval, source-aware rerank, and copy rerank contributions | Next GPU task |
+| 5 | Latency breakdown and fair baseline | Decide whether Triton/kernel work is scientifically justified | Still blocking Workflow3 |
