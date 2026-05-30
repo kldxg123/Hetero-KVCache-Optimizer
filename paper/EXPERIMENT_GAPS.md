@@ -49,14 +49,14 @@ Purpose:
 
 Current status:
 
-- One SourceCopy-disabled 14K WikiText-2 setup gives +1.20% PPL delta.
-- One SourceCopy-disabled 16K WikiText-2 setup gives +1.66% PPL delta.
-- Both are below the 5% semantic-loss budget.
+- SourceCopy-disabled WikiText-2 setups give +1.20% at 14K, +1.66% at 16K,
+  +0.45% at 16K offset32768, and +3.14% at 32K.
+- All are below the 5% semantic-loss budget.
 
 Needed:
 
-- More WikiText-2 slices with different offsets, or a second text corpus.
-- If runtime permits, longer prefix contexts.
+- Add a second text corpus if available locally.
+- Add a true 128K PPL-style diagnostic only if runtime and memory safety allow.
 
 Purpose:
 
@@ -67,13 +67,14 @@ Purpose:
 Current status:
 
 - Tables record peak memory and bounded active HBM evidence.
-- Paper still needs curves.
+- Raw-log-derived memory curves have been generated for the promoted seed6004
+  128K required-depth run.
 
 Needed:
 
-- Extract per-chunk active HBM tokens.
-- Extract per-chunk DRAM entries/bytes.
-- Extract per-run PyTorch allocated/reserved memory and monitor memory.
+- Improve final paper styling.
+- Add another seed's curve only if reviewers ask for non-cherry-picked visual
+  evidence.
 
 Purpose:
 

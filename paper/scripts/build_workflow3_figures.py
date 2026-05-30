@@ -184,6 +184,7 @@ def main() -> None:
     ppl16_offset = load(
         "ppl_16k_offset32768_prefix14336_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json"
     )
+    ppl32 = load("ppl_32k_prefix30720_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json")
     fullkv = load("niah_fullkv_128k_cap75_sdpa_manual_latency_refresh_gpu1_20260529_auto.json")
     fullkv_cap = load("niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json")
     fullkv_cap_tracker = load("experiment_tracker_niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json")
@@ -259,6 +260,14 @@ def main() -> None:
                 "monitor_peak_process_mb": ppl16_offset["monitor"]["peak_process_memory_mb"],
                 "max_reserved_gib": ppl16_offset["modes"]["heterokv"]["max_reserved_gib"],
             },
+            "ppl32": {
+                "fullkv": ppl32["modes"]["full"]["ppl"],
+                "heterokv": ppl32["modes"]["heterokv"]["ppl"],
+                "relative_delta": ppl32["relative_ppl_delta"],
+                "monitor_peak_process_mb": ppl32["monitor"]["peak_process_memory_mb"],
+                "fullkv_max_reserved_gib": ppl32["modes"]["full"]["max_reserved_gib"],
+                "max_reserved_gib": ppl32["modes"]["heterokv"]["max_reserved_gib"],
+            },
         },
         "ablation": {
             "source_aware_no_sourcecopy": {
@@ -312,14 +321,15 @@ def main() -> None:
     bar_chart(
         OUT_DIR / "ppl_relative_delta_by_context.svg",
         "WikiText-2 Relative PPL Delta",
-        ["14K", "16K", "16K@32K"],
+        ["14K", "16K", "16K@32K", "32K"],
         [
             summary["ppl"]["relative_delta"] * 100,
             summary["ppl"]["ppl16"]["relative_delta"] * 100,
             summary["ppl"]["ppl16_offset32768"]["relative_delta"] * 100,
+            summary["ppl"]["ppl32"]["relative_delta"] * 100,
         ],
         "%",
-        ["#27ae60", "#27ae60", "#27ae60"],
+        ["#27ae60", "#27ae60", "#27ae60", "#27ae60"],
     )
     bar_chart(
         OUT_DIR / "memory_summary.svg",

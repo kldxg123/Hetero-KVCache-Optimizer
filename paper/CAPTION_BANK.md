@@ -45,9 +45,9 @@ memory-envelope setting. This is not a native RTX 4090 latency measurement.
 
 SourceCopy-disabled WikiText-2 PPL comparison. HeteroKV shows +1.20% relative
 PPL delta on the 14K suffix setup, +1.66% on the 16K suffix setup, and +0.45%
-on a 16K setup starting at WikiText-2 token offset 32768. All are below the 5%
-semantic-loss budget. These PPL runs do not use the source-aware exact-copy
-NIAH path.
+on a 16K setup starting at WikiText-2 token offset 32768. A 32K suffix setup
+has +3.14% relative PPL delta. All are below the 5% semantic-loss budget.
+These PPL runs do not use the source-aware exact-copy NIAH path.
 
 ## Figure: SourceCopy Ablation
 

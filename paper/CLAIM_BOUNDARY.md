@@ -55,7 +55,8 @@ Allowed:
 - A second 16K-token SourceCopy-disabled setup has +1.66% relative PPL delta.
 - A third 16K-token SourceCopy-disabled setup at WikiText-2 token offset 32768
   has +0.45% relative PPL delta.
-- This supports a controlled semantic-loss claim for that PPL setup.
+- A fourth 32K-token SourceCopy-disabled setup has +3.14% relative PPL delta.
+- This supports a controlled semantic-loss claim for the tested PPL setups.
 
 Do not overstate:
 
