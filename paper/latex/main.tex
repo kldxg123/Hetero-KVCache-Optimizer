@@ -1,0 +1,101 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{HeteroKV: Source-Aware Approximate Long-Context KV Cache for 128K Generation under Fixed HBM Budgets}
+\author{Anonymous}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Long-context generation with full KV caching scales memory linearly with
+sequence length, making 128K-token contexts difficult to support on
+24GB-class GPUs for 7B-scale instruction models. We present HeteroKV, an
+approximate long-context cache that keeps a bounded active KV set in GPU HBM
+and stores evicted KV in compressed DRAM-side records. HeteroKV combines sink
+tokens, tail tokens, heavy-hitter retention, compressed DRAM storage, and
+source-aware token-level retrieval. It is not a lossless reconstruction of
+native full attention; instead, it targets stable memory use, functional
+generation, and controlled semantic loss under a fixed HBM budget.
+
+On Qwen2.5-7B-Instruct at 128K context length, the promoted source-aware NIAH
+configuration achieves 24/24 accuracy across depths 25\%, 50\%, 75\%, and
+90\% on an A100 server constrained to a 4090-like memory envelope. The run uses
+a 22 GiB PyTorch cap and a 30 GiB own-process fuse. Mean decode latency is
+98.12 ms/step, or 1.88x a wide-memory A100 FullKV reference. SourceCopy-disabled
+WikiText-2 PPL runs show +1.20\% and +1.66\% relative deltas on 14K and 16K
+suffix setups. These results support HeteroKV as a practical approximate cache
+for long-context survival, while true RTX 4090 latency remains future hardware
+validation.
+\end{abstract}
+
+\section{Introduction}
+
+Full KV caching is simple and accurate, but it scales linearly with context
+length. At 128K tokens, a 7B model can exceed the usable memory budget of a
+24GB GPU. HeteroKV addresses this gap by keeping a bounded active KV set in HBM
+and moving evicted tokens into compressed DRAM-side storage. The design is an
+Approximate Long-Context Cache rather than a lossless full-KV replacement.
+
+\section{Method}
+
+HeteroKV keeps sink tokens, tail tokens, heavy-hitter tokens, and selected
+retrieved tokens in HBM. Evicted tokens are stored outside HBM in compressed
+records. During decode, source-aware token-level retrieval can bring relevant
+chunks back into the active cache. The strongest NIAH path uses source-aware
+prefiltering and late-layer retrieval. Pure Query-Key dot-product retrieval is
+reported separately as a negative control.
+
+\section{Experimental Setup}
+
+The primary model is Qwen2.5-7B-Instruct. The main context length is 128K. The
+hardware claim is A100 under a 4090-like memory envelope: 22 GiB PyTorch cap
+and 30 GiB own-process fuse. This does not claim native RTX 4090 latency.
+
+\section{Results}
+
+\subsection{128K NIAH}
+
+The promoted source-aware path reaches 24/24 across required depths 25\%,
+50\%, 75\%, and 90\%, using three seeds and two trials per depth. Mean decode
+latency is 98.12 ms/step; the wide-memory A100 FullKV reference is
+52.25 ms/step.
+
+\subsection{Memory}
+
+The parsed seed6004 memory log contains 64 prefill chunks. Active HBM KV reaches
+8192 tokens and remains flat. DRAM compressed KV grows to 122880 tokens. Max
+torch reserved memory is 21.33 GiB, and max nvidia-smi process memory is
+21.82 GiB.
+
+\subsection{PPL}
+
+SourceCopy-disabled WikiText-2 PPL gives +1.20\% relative delta on the 14K
+suffix setup and +1.66\% on the 16K suffix setup.
+
+\subsection{Negative Controls}
+
+A clean current pure dot-product top8/qhist64 128K control scores 0/4 on the
+25\%/50\% subset, with mean decode 1005.04 ms/step and peak process memory
+21.8242 GiB. Earlier pure-dot variants score 0/4 to 1/4.
+
+\section{Limitations}
+
+The strongest result is source-aware and should not be described as pure KV-only
+dot-product retrieval. A100-under-cap measurements do not prove native RTX 4090
+latency. PPL evidence is 14K/16K, not 128K. The current 0\% NIAH template is
+non-discriminative because FullKV also fails it.
+
+\section{Conclusion}
+
+HeteroKV demonstrates that an approximate long-context cache can support 128K
+generation for a 7B model under a 24GB-class memory envelope while preserving
+task accuracy in source-aware NIAH and keeping PPL degradation controlled in
+SourceCopy-disabled evaluations.
+
+\end{document}
