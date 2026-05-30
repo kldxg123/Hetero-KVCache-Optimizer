@@ -44,15 +44,15 @@ Risk: medium-high.
 Current evidence:
 
 - NIAH required-depth result is strong: 24/24.
-- PPL has four SourceCopy-disabled suffix setups: +1.20%, +1.66%, +0.45% at
-  token offset 32768, and +3.14% at 32K.
+- PPL has five SourceCopy-disabled suffix setups: +1.20%, +1.66%, +0.45% at
+  token offset 32768, +3.14% at WikiText-2 32K, and +1.09% on IMDb 16K.
 
 Response:
 
 - Present NIAH as exact-recall stress evidence, not broad language-quality
   proof.
 - Use PPL to show controlled semantic loss outside the exact-copy path.
-- Add a second corpus if claiming broad language quality.
+- Avoid presenting suffix PPL as true 128K PPL.
 
 ## R4: "Why did 0% NIAH fail?"
 
@@ -93,7 +93,8 @@ Risk: medium.
 
 Current evidence:
 
-- 14K, 16K, 16K offset32768, and 32K SourceCopy-disabled PPL pass within 5%.
+- WikiText-2 14K/16K/16K offset32768/32K and IMDb 16K SourceCopy-disabled PPL
+  pass within 5%.
 
 Response:
 

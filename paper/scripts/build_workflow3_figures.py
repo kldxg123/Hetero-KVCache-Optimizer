@@ -185,6 +185,7 @@ def main() -> None:
         "ppl_16k_offset32768_prefix14336_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json"
     )
     ppl32 = load("ppl_32k_prefix30720_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json")
+    ppl_imdb = load("ppl_imdb_16k_prefix14336_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json")
     fullkv = load("niah_fullkv_128k_cap75_sdpa_manual_latency_refresh_gpu1_20260529_auto.json")
     fullkv_cap = load("niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json")
     fullkv_cap_tracker = load("experiment_tracker_niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json")
@@ -268,6 +269,15 @@ def main() -> None:
                 "fullkv_max_reserved_gib": ppl32["modes"]["full"]["max_reserved_gib"],
                 "max_reserved_gib": ppl32["modes"]["heterokv"]["max_reserved_gib"],
             },
+            "imdb16": {
+                "dataset": ppl_imdb["dataset"],
+                "fullkv": ppl_imdb["modes"]["full"]["ppl"],
+                "heterokv": ppl_imdb["modes"]["heterokv"]["ppl"],
+                "relative_delta": ppl_imdb["relative_ppl_delta"],
+                "monitor_peak_process_mb": ppl_imdb["monitor"]["peak_process_memory_mb"],
+                "fullkv_max_reserved_gib": ppl_imdb["modes"]["full"]["max_reserved_gib"],
+                "max_reserved_gib": ppl_imdb["modes"]["heterokv"]["max_reserved_gib"],
+            },
         },
         "ablation": {
             "source_aware_no_sourcecopy": {
@@ -320,16 +330,17 @@ def main() -> None:
     )
     bar_chart(
         OUT_DIR / "ppl_relative_delta_by_context.svg",
-        "WikiText-2 Relative PPL Delta",
-        ["14K", "16K", "16K@32K", "32K"],
+        "SourceCopy-Disabled Relative PPL Delta",
+        ["WT14K", "WT16K", "WT16@32K", "WT32K", "IMDb16K"],
         [
             summary["ppl"]["relative_delta"] * 100,
             summary["ppl"]["ppl16"]["relative_delta"] * 100,
             summary["ppl"]["ppl16_offset32768"]["relative_delta"] * 100,
             summary["ppl"]["ppl32"]["relative_delta"] * 100,
+            summary["ppl"]["imdb16"]["relative_delta"] * 100,
         ],
         "%",
-        ["#27ae60", "#27ae60", "#27ae60", "#27ae60"],
+        ["#27ae60", "#27ae60", "#27ae60", "#27ae60", "#1f618d"],
     )
     bar_chart(
         OUT_DIR / "memory_summary.svg",

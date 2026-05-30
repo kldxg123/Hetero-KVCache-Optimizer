@@ -24,8 +24,8 @@ Use this checklist before each paper or report revision.
 - [ ] Main NIAH result is 24/24 on depths 25/50/75/90.
 - [ ] Optional 99% result is 6/6 and separated from required depths.
 - [ ] Optional 0% is marked non-discriminative under the current template.
-- [ ] PPL table includes the validated +1.20%, +1.66%, +0.45%, and +3.14%
-      SourceCopy-disabled WikiText-2 deltas.
+- [ ] PPL table includes the validated +1.20%, +1.66%, +0.45%, +3.14%, and
+      +1.09% SourceCopy-disabled deltas.
 - [ ] Latency result is 98.12 ms/step vs 52.25 ms/step, 1.88x.
 - [ ] Memory result reports the 22 GiB PyTorch cap and 30 GiB fuse.
 
@@ -33,6 +33,6 @@ Use this checklist before each paper or report revision.
 
 - [ ] Real RTX 4090 survival/latency rerun, if the paper claims 4090 latency.
 - [ ] Redesigned 0% NIAH benchmark where FullKV passes.
-- [ ] Second-corpus PPL validation if a broad language-quality claim is made.
+- [ ] True 128K PPL-style validation if a broad language-quality claim is made.
 - [ ] Clean figure scripts for memory curves and result plots.
 - [ ] Appendix table for rejected ideas and invalid runs.

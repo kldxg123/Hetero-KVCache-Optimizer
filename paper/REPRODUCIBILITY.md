@@ -84,6 +84,7 @@ Validated setups:
 | 16K suffix evaluation | 4.9896 | 5.0723 | +1.66% |
 | 16K suffix evaluation at token offset 32768 | 6.2955 | 6.3237 | +0.45% |
 | 32K suffix evaluation | 6.5289 | 6.7336 | +3.14% |
+| IMDb 16K suffix evaluation | 15.2031 | 15.3683 | +1.09% |
 
 Do not report this as 128K PPL.
 

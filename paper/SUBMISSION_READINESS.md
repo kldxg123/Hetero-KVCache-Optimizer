@@ -13,7 +13,7 @@ top-conference submission claim.
 | A100 memory-envelope survival | Passed | 22 GiB PyTorch cap, 30 GiB fuse, 22348 MB peak |
 | FullKV 22 GiB-cap negative control | Passed | 128K FullKV fails with CUDA OOM under the same cap without 30 GiB fuse trigger |
 | Source-aware latency target | Passed | 98.12 ms/step, 1.88x FullKV A100 reference |
-| PPL degradation on tested setups | Passed | +1.20%, +1.66%, +0.45%, and +3.14% on SourceCopy-disabled WikiText-2 suffix evaluations |
+| PPL degradation on tested setups | Passed | +1.20%, +1.66%, +0.45%, +3.14% on WikiText-2 and +1.09% on IMDb, all SourceCopy-disabled |
 | Generate API smoke | Passed | 2K/4K/8K HF `generate()` smoke |
 | Negative-result preservation | Passed | Failed ideas and invalid runs recorded |
 
@@ -22,7 +22,7 @@ top-conference submission claim.
 | Gate | Status | Required Action |
 | --- | --- | --- |
 | True RTX 4090 latency | Not passed | Run on real RTX 4090 or weaken claim |
-| Broad semantic quality | Partially passed | Four SourceCopy-disabled WikiText-2 suffix setups pass through 32K; add a second corpus for a broad claim |
+| Broad semantic quality | Partially passed | SourceCopy-disabled suffix PPL passes on WikiText-2 through 32K and IMDb at 16K; still not true 128K PPL |
 | Pure dot-product retrieval claim | Not passed | Current clean 128K pure-dot control is 0/4; keep claim source-aware or add shorter-context scaling table |
 | 0% NIAH discriminativeness | Not passed | Redesign template and require FullKV pass |
 | Paper-ready figures | Partially passed | Main result, latency, PPL, ablation, and memory curves rendered; still need final paper styling/captions |

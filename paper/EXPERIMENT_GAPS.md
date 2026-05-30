@@ -51,12 +51,14 @@ Current status:
 
 - SourceCopy-disabled WikiText-2 setups give +1.20% at 14K, +1.66% at 16K,
   +0.45% at 16K offset32768, and +3.14% at 32K.
+- SourceCopy-disabled IMDb 16K gives +1.09%.
 - All are below the 5% semantic-loss budget.
 
 Needed:
 
-- Add a second text corpus if available locally.
 - Add a true 128K PPL-style diagnostic only if runtime and memory safety allow.
+- Add more non-WikiText corpora only if they already exist locally or network
+  access is reliable.
 
 Purpose:
 

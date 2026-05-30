@@ -16,7 +16,7 @@ experiments and clearer methodological separation.
 - The promoted source-aware path meets the stated latency target in the A100
   memory-envelope setting: 98.12 ms/step versus 52.25 ms/step, or 1.88x.
 - The PPL result is a real loss/PPL measurement, not a proxy, and now includes
-  four SourceCopy-disabled suffix setups through 32K.
+  five SourceCopy-disabled suffix setups across WikiText-2 and IMDb.
 - Failed and invalid runs are recorded, including output clobbering, wrapper
   failures, rejected sink1024, and the non-discriminative 0% NIAH case.
 - The claim boundary is clear: approximate cache, not lossless full attention.
@@ -62,15 +62,16 @@ Required fix before a strong method claim:
 
 ### 3. PPL Evidence Is Still Narrow, But Improved
 
-The PPL result is encouraging and now includes four SourceCopy-disabled suffix
-setups: +1.20% at 14K, +1.66% at 16K, +0.45% at 16K offset32768, and +3.14%
-at 32K. This is stronger than a single PPL point, but it is still not a broad
+The PPL result is encouraging and now includes five SourceCopy-disabled suffix
+setups: +1.20% at WikiText-2 14K, +1.66% at WikiText-2 16K, +0.45% at
+WikiText-2 16K offset32768, +3.14% at WikiText-2 32K, and +1.09% at IMDb 16K.
+This is stronger than a single PPL point, but it is still not a broad
 long-context language-quality claim.
 
 Required fix before a strong quality claim:
 
-- Add a second corpus if locally available.
-- Increase context length further only if runtime and memory safety allow.
+- Add true 128K PPL-style diagnostics only if runtime and memory safety allow.
+- Add more corpora only if they are already cached or network access is stable.
 - Keep SourceCopy/source-aware features disabled unless testing them explicitly.
 
 ### 4. 0% NIAH Needs A Redesign Or Removal
@@ -105,7 +106,7 @@ Likely reviewer questions:
 1. Does the source-aware prefilter leak the answer or use needle position?
 2. Does PyTorch memory fraction accurately model a 4090?
 3. How does the method behave without source-aware exact-copy support?
-4. Is the PPL result robust beyond WikiText-2?
+4. Is the PPL result robust beyond suffix-style evaluation?
 5. Why should NIAH accuracy imply broad long-context quality?
 6. What are the exact DRAM bytes and transfer costs?
 7. Is the 4-bit storage truly bit-packed or uint8-held int4 values?
@@ -119,7 +120,7 @@ Minimum next experiments before claiming submission-level readiness:
 | 1 | Pure dot-product-only 128K NIAH table | Separate core retrieval from source-aware assistance | Stop if memory exceeds 30 GiB |
 | 2 | Real 4090 24GB survival test | Close the hardware proof gap | Stop if unavailable; mark as limitation |
 | 3 | Redesigned 0% NIAH with FullKV pass | Repair benchmark pathology | Stop if FullKV still fails |
-| 4 | Second-corpus SourceCopy-disabled PPL slice | Strengthen semantic-loss claim | Stop if PPL delta exceeds 5% |
+| 4 | True 128K or additional cached-corpus PPL diagnostic | Strengthen semantic-loss claim | Stop if PPL delta exceeds 5% or runtime is unsafe |
 | 5 | Final paper figure styling | Turn generated evidence plots into submission figures | Stop if source artifacts lack needed fields |
 
 ## Current Recommendation

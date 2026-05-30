@@ -113,12 +113,12 @@ Bars:
 - HeteroKV PPL: 3.0063.
 - Delta: +1.20%.
 - Additional relative-delta bars: 16K +1.66%, 16K offset32768 +0.45%,
-  32K +3.14%.
+  32K +3.14%, IMDb 16K +1.09%.
 
 Required label:
 
 - SourceCopy disabled.
-- 14K/16K/16K offset32768/32K PPL setups.
+- WikiText-2 14K/16K/16K offset32768/32K and IMDb 16K PPL setups.
 
 Claim supported:
 
