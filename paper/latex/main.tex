@@ -27,11 +27,12 @@ On Qwen2.5-7B-Instruct at 128K context length, the promoted source-aware NIAH
 configuration achieves 24/24 accuracy across depths 25\%, 50\%, 75\%, and
 90\% on an A100 server constrained to a 4090-like memory envelope. The run uses
 a 22 GiB PyTorch cap and a 30 GiB own-process fuse. Mean decode latency is
-98.12 ms/step, or 1.88x a wide-memory A100 FullKV reference. SourceCopy-disabled
-WikiText-2 PPL runs show +1.20\% and +1.66\% relative deltas on 14K and 16K
-suffix setups. These results support HeteroKV as a practical approximate cache
-for long-context survival, while true RTX 4090 latency remains future hardware
-validation.
+98.12 ms/step, or 1.88x a wide-memory A100 FullKV reference. A FullKV 128K
+negative control fails under the same 22 GiB cap with CUDA OOM. SourceCopy-
+disabled PPL runs show +1.20\%, +1.66\%, +0.45\%, and +3.14\% relative deltas
+on WikiText-2 suffix setups and +1.09\% on an IMDb 16K suffix setup. These
+results support HeteroKV as a practical approximate cache for long-context
+survival, while true RTX 4090 latency remains future hardware validation.
 \end{abstract}
 
 \section{Introduction}
@@ -73,10 +74,28 @@ The parsed seed6004 memory log contains 64 prefill chunks. Active HBM KV reaches
 torch reserved memory is 21.33 GiB, and max nvidia-smi process memory is
 21.82 GiB.
 
+A FullKV 128K negative control under the same 22 GiB PyTorch cap fails with
+CUDA OOM when PyTorch reports 20.90 GiB process memory in use against a
+22.00 GiB allowance. The monitor does not trigger the 30 GiB safety fuse.
+
 \subsection{PPL}
 
-SourceCopy-disabled WikiText-2 PPL gives +1.20\% relative delta on the 14K
-suffix setup and +1.66\% on the 16K suffix setup.
+SourceCopy-disabled PPL remains separate from the source-aware NIAH path. The
+validated suffix setups are:
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Dataset / window & FullKV PPL & HeteroKV PPL & Delta \\
+\midrule
+WikiText-2 14K & 2.9706 & 3.0063 & +1.20\% \\
+WikiText-2 16K & 4.9896 & 5.0723 & +1.66\% \\
+WikiText-2 16K offset32768 & 6.2955 & 6.3237 & +0.45\% \\
+WikiText-2 32K & 6.5289 & 6.7336 & +3.14\% \\
+IMDb 16K & 15.2031 & 15.3683 & +1.09\% \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \subsection{Negative Controls}
 
@@ -88,8 +107,9 @@ A clean current pure dot-product top8/qhist64 128K control scores 0/4 on the
 
 The strongest result is source-aware and should not be described as pure KV-only
 dot-product retrieval. A100-under-cap measurements do not prove native RTX 4090
-latency. PPL evidence is 14K/16K, not 128K. The current 0\% NIAH template is
-non-discriminative because FullKV also fails it.
+latency. PPL evidence is suffix-style evaluation through 32K plus IMDb 16K, not
+true 128K PPL. The current 0\% NIAH template is non-discriminative because
+FullKV also fails it.
 
 \section{Conclusion}
 

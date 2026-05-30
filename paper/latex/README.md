@@ -10,3 +10,8 @@ It is not yet a final submission package. Before submission:
 - tighten related work;
 - include artifact paths in appendix tables;
 - decide whether to claim only A100-under-cap or add real RTX 4090 evidence.
+
+Build check:
+
+- `pdflatex -interaction=nonstopmode -halt-on-error main.tex`
+- Last local build: passed, produced `main.pdf`.
