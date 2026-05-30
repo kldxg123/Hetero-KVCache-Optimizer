@@ -78,6 +78,7 @@ Configuration:
 | Variant | FullKV PPL | HeteroKV PPL | Delta | Hetero Max Reserved | Own Process Peak | Artifact |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | WikiText-2 real PPL, SDPA, SourceCopy-disabled | 2.9706 | 3.0063 | +1.20% | 19.2754 GiB | 20.248 GiB | `experiments/ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_allowcoexist_gpu3_20260529_auto.json` |
+| WikiText-2 real PPL 16K, SDPA, SourceCopy-disabled | 4.9896 | 5.0723 | +1.66% | 19.2754 GiB | 18.0605 GiB | `experiments/ppl_16k_prefix14336_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json` |
 
 Mechanism and memory:
 
@@ -91,6 +92,8 @@ Mechanism and memory:
 Claim boundary:
 
 - This supports controlled semantic loss on the tested 14K PPL setup.
+- This supports controlled semantic loss on two tested PPL suffix setups
+  (14K and 16K), both with SourceCopy disabled.
 - This is not a 128K PPL claim.
 - This does not validate SourceCopy/source-prefilter for general-language PPL.
 

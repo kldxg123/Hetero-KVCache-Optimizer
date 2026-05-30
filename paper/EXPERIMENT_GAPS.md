@@ -49,11 +49,13 @@ Purpose:
 
 Current status:
 
-- One SourceCopy-disabled WikiText-2 setup gives +1.20% PPL delta.
+- One SourceCopy-disabled 14K WikiText-2 setup gives +1.20% PPL delta.
+- One SourceCopy-disabled 16K WikiText-2 setup gives +1.66% PPL delta.
+- Both are below the 5% semantic-loss budget.
 
 Needed:
 
-- More WikiText-2 slices or a second text corpus.
+- More WikiText-2 slices with different offsets, or a second text corpus.
 - If runtime permits, longer prefix contexts.
 
 Purpose:

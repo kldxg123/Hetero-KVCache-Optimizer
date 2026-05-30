@@ -118,6 +118,7 @@ def main() -> None:
     dram_bytes = [row["memory_summary"]["dram_bytes"] for row in rows]
 
     ppl = load("ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_allowcoexist_gpu3_20260529_auto.json")
+    ppl16 = load("ppl_16k_prefix14336_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json")
     fullkv = load("niah_fullkv_128k_cap75_sdpa_manual_latency_refresh_gpu1_20260529_auto.json")
     full_row = fullkv["niah"]["rows"][0]
     full_decode = full_row["latency_breakdown"]["decode_ms_per_step"]
@@ -162,6 +163,13 @@ def main() -> None:
             "fullkv": ppl["modes"]["full"]["ppl"],
             "heterokv": ppl["modes"]["heterokv"]["ppl"],
             "relative_delta": ppl["relative_ppl_delta"],
+            "ppl16": {
+                "fullkv": ppl16["modes"]["full"]["ppl"],
+                "heterokv": ppl16["modes"]["heterokv"]["ppl"],
+                "relative_delta": ppl16["relative_ppl_delta"],
+                "monitor_peak_process_mb": ppl16["monitor"]["peak_process_memory_mb"],
+                "max_reserved_gib": ppl16["modes"]["heterokv"]["max_reserved_gib"],
+            },
         },
         "ablation": {
             "source_aware_no_sourcecopy": {
@@ -207,6 +215,17 @@ def main() -> None:
         [summary["ppl"]["fullkv"], summary["ppl"]["heterokv"]],
         "",
         ["#7f8c8d", "#27ae60"],
+    )
+    bar_chart(
+        OUT_DIR / "ppl_relative_delta_by_context.svg",
+        "WikiText-2 Relative PPL Delta",
+        ["14K", "16K"],
+        [
+            summary["ppl"]["relative_delta"] * 100,
+            summary["ppl"]["ppl16"]["relative_delta"] * 100,
+        ],
+        "%",
+        ["#27ae60", "#27ae60"],
     )
     bar_chart(
         OUT_DIR / "memory_summary.svg",

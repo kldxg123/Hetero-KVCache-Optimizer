@@ -60,14 +60,15 @@ Required fix before a strong method claim:
 - Explain when source-aware metadata is available and why it is not answer
   leakage.
 
-### 3. PPL Evidence Is Too Narrow
+### 3. PPL Evidence Is Still Narrow, But Improved
 
-The PPL result is encouraging, but it is not a broad long-context language
-quality claim.
+The PPL result is encouraging and now includes two SourceCopy-disabled suffix
+setups: +1.20% at 14K and +1.66% at 16K. This is stronger than a single PPL
+point, but it is still not a broad long-context language-quality claim.
 
 Required fix before a strong quality claim:
 
-- Add more WikiText-2 slices or a second corpus.
+- Add more WikiText-2 offsets or a second corpus.
 - Increase context length if feasible.
 - Keep SourceCopy/source-aware features disabled unless testing them explicitly.
 

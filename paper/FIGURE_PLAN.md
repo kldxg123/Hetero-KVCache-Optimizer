@@ -143,6 +143,7 @@ Generated files:
 - `paper/figures/niah_required_accuracy.svg`
 - `paper/figures/latency_ratio.svg`
 - `paper/figures/ppl_delta.svg`
+- `paper/figures/ppl_relative_delta_by_context.svg`
 - `paper/figures/memory_summary.svg`
 - `paper/figures/layer_ablation_latency.svg`
 - `paper/figures/sourcecopy_ablation_accuracy.svg`
