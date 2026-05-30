@@ -9,6 +9,8 @@ This appendix prevents repeated dead ends and preserves negative evidence.
 | Parallel seed4242 + seed7777 source-prefilter run before output-path fix | Shared child output path clobbered a result | Excluded; sequential reruns are valid |
 | First direct seed7777 wrapper run | Missing `CUDA_VISIBLE_DEVICES`, exited before GPU use | Wrapper failure, not model failure |
 | First stage2 generate smoke after wrapper changes | `run_stage2_smoke.py` lacked `--attn-implementation` | Fixed script, reran smoke |
+| Workflow3 pure-dot launch attempt with `/usr/bin/python3` | Environment lacked `pytest`; exited during sanity | Environment failure, no GPU NIAH run |
+| Workflow3 pure-dot launch attempt without `--stage gpu` | Only sanity ran; no NIAH main experiment | Wrapper configuration failure, rerun with `--stage gpu` |
 
 ## Rejected Method Ideas
 
@@ -20,6 +22,7 @@ This appendix prevents repeated dead ends and preserves negative evidence.
 | Report source-prefilter path as pure dot-product | Mechanism uses source-aware filtering | Disallowed |
 | Claim 4090 latency from A100-under-cap | Hardware differs | Disallowed |
 | Earlier 128K pure dot-product top2/top8/qhist variants | 0/4 to 1/4, all below 30 GiB fuse | Preserve as failed ablation, not final method |
+| Clean current 128K pure dot-product top8/qhist64 | 0/4, mean decode 1005.04 ms/step, peak 21.8242 GiB | Preserve as current negative control |
 
 ## Diagnostic-Only Evidence
 

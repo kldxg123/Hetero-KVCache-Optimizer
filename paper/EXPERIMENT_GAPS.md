@@ -29,13 +29,16 @@ Current status:
 - The PPL result disables SourceCopy and remains separate.
 - Earlier pure dot-product 128K attempts are preserved and failed at 0/4 to 1/4
   while staying below the 30 GiB fuse.
+- A current clean 128K pure dot-product top8/qhist64 negative control has now
+  been run with unique outputs: 0/4, mean decode 1005.04 ms/step, peak
+  21.8242 GiB, no monitor kill.
 
 Needed:
 
-- A clean pure dot-product-only retrieval table at 16K/32K/128K where feasible.
+- A broader pure dot-product-only retrieval table at 16K/32K/128K where
+  feasible.
 - Compare against source-aware prefilter on the same prompts.
-- Use unique child output paths, because older pure-dot trackers used the shared
-  `experiments/niah_eval.json` path.
+- Use unique child output paths for any additional rows.
 
 Purpose:
 

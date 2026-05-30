@@ -124,7 +124,19 @@ def main() -> None:
 
     no_sourcecopy = load("niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json")
     sourcecopy = load("niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json")
+    clean_pure = load("niah_128k_depth25_50_trials2_pure_dotproduct_clean_seed6004_gpu1_20260530_auto.json")
     pure_dot = {
+        "clean_current_top8_qhist64": {
+            "status": clean_pure["status"],
+            "correct": clean_pure["niah"]["correct"],
+            "total": clean_pure["niah"]["total"],
+            "accuracy": clean_pure["niah"]["accuracy"],
+            "monitor_max_process_memory_gib": 21.82421875,
+            "monitor_killed_by_monitor": False,
+            "mean_decode_ms_per_step": mean(
+                row["latency_breakdown"]["decode_ms_per_step"] for row in clean_pure["niah"]["rows"]
+            ),
+        },
         "top2_win64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_20260527_210444.json"),
         "top8_win64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top8_win64_20260527_211805.json"),
         "top2_win64_qhist64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_qhist64_20260527_225330.json"),
@@ -226,15 +238,16 @@ def main() -> None:
     bar_chart(
         OUT_DIR / "pure_dotproduct_failed_accuracy.svg",
         "Earlier 128K Pure Dot-Product Attempts",
-        ["top2", "top8", "qhist64", "keep16K"],
+        ["clean", "top2", "top8", "qhist64", "keep16K"],
         [
+            pure_dot["clean_current_top8_qhist64"]["accuracy"] * 100,
             pure_dot["top2_win64"]["accuracy"] * 100,
             pure_dot["top8_win64"]["accuracy"] * 100,
             pure_dot["top2_win64_qhist64"]["accuracy"] * 100,
             pure_dot["keep16384_top2_qhist64"]["accuracy"] * 100,
         ],
         "%",
-        ["#95a5a6", "#95a5a6", "#95a5a6", "#95a5a6"],
+        ["#c0392b", "#95a5a6", "#95a5a6", "#95a5a6", "#95a5a6"],
     )
 
     print(f"wrote {DATA_DIR / 'workflow3_summary.json'}")

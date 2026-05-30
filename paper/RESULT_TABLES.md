@@ -122,12 +122,13 @@ These runs are retained as negative evidence. They are useful reviewer-facing
 evidence that the final source-aware path was not chosen by hiding failed pure
 retrieval attempts.
 
-| Variant | Result | Monitor Peak | Monitor Killed | Treatment |
-| --- | ---: | ---: | ---: | --- |
-| keep_tail8192, token window 64, top2 | 0/4 | 21.0039 GiB | False | Failed pure dot-product attempt |
-| keep_tail8192, token window 64, top8 | 1/4 | 21.1445 GiB | False | Failed pure dot-product attempt |
-| keep_tail8192, token window 64, top2, qhist64 | 0/4 | 21.0039 GiB | False | Failed pure dot-product attempt |
-| keep_tail16384, token window 64, top2, qhist64 | 0/4 | 21.0000 GiB | False | Failed pure dot-product attempt |
+| Variant | Result | Mean Decode | Monitor Peak | Monitor Killed | Treatment |
+| --- | ---: | ---: | ---: | ---: | --- |
+| clean current top8, qhist64, no source features | 0/4 | 1005.04 ms/step | 21.8242 GiB | False | Current clean negative control |
+| keep_tail8192, token window 64, top2 | 0/4 | n/a | 21.0039 GiB | False | Failed pure dot-product attempt |
+| keep_tail8192, token window 64, top8 | 1/4 | n/a | 21.1445 GiB | False | Failed pure dot-product attempt |
+| keep_tail8192, token window 64, top2, qhist64 | 0/4 | n/a | 21.0039 GiB | False | Failed pure dot-product attempt |
+| keep_tail16384, token window 64, top2, qhist64 | 0/4 | n/a | 21.0000 GiB | False | Failed pure dot-product attempt |
 
 Artifacts:
 
@@ -135,15 +136,17 @@ Artifacts:
 - `experiments/experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top8_win64_20260527_211805.json`
 - `experiments/experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_qhist64_20260527_225330.json`
 - `experiments/experiment_tracker_workflow2_128k_keep16384_fp32qk_dot_top2_win64_qhist64_20260527_231620.json`
+- `experiments/niah_128k_depth25_50_trials2_pure_dotproduct_clean_seed6004_gpu1_20260530_auto.json`
+- `experiments/experiment_tracker_niah_128k_depth25_50_trials2_pure_dotproduct_clean_seed6004_gpu1_20260530_auto.json`
 
 Interpretation:
 
 - These runs stayed below the 30 GiB fuse but failed quality.
+- The clean current top8/qhist64 run produced `000000` on all four rows.
 - They support the current claim boundary: pure token-level dot-product was not
   enough in these earlier 128K configurations.
-- A clean current pure-retrieval table is still a desirable missing experiment,
-  because these early trackers used the older shared `experiments/niah_eval.json`
-  child output path.
+- The clean current run fixes the old shared-child-output concern for this
+  specific top8/qhist64 negative control.
 
 ## Optional Edge Depths
 

@@ -22,7 +22,7 @@ top-conference submission claim.
 | --- | --- | --- |
 | True RTX 4090 latency | Not passed | Run on real RTX 4090 or weaken claim |
 | Broad semantic quality | Not passed | Add more PPL slices/corpora |
-| Pure dot-product retrieval claim | Not passed | Add separate pure retrieval table |
+| Pure dot-product retrieval claim | Not passed | Current clean 128K pure-dot control is 0/4; keep claim source-aware or add shorter-context scaling table |
 | 0% NIAH discriminativeness | Not passed | Redesign template and require FullKV pass |
 | Paper-ready figures | Not passed | Extract curves and render plots |
 

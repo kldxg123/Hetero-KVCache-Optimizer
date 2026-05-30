@@ -69,7 +69,10 @@ Remote status:
 - Source-aware no-SourceCopy hard ablation: `3/4`.
 - Source-aware + SourceCopy hard ablation: `4/4`.
 - Earlier pure dot-product attempts: `0/4`, `1/4`, `0/4`, `0/4`.
+- Current clean pure dot-product top8/qhist64 negative control:
+  `0/4`, mean decode `1005.04 ms/step`, peak `21.8242 GiB`, no monitor kill.
 - PPL SourceCopy-disabled: `+1.20%`.
 - Current submission gate remains not passed; the strongest remaining blockers
-  are real RTX 4090 validation, broader PPL, and a clean current pure-retrieval
-  table with unique child outputs.
+  are real RTX 4090 validation, broader PPL, and a broader short-to-long pure
+  retrieval scaling table if the paper wants to discuss pure QK retrieval beyond
+  a negative 128K control.

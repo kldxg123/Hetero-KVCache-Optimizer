@@ -46,9 +46,16 @@ with SourceCopy disabled reaches 3/4 and SourceCopy boost20 reaches 4/4 on
 128K 25%/50% trials. This is useful evidence, but still not enough for a broad
 pure-retrieval claim.
 
+A current clean pure dot-product top8/qhist64 negative control was also run on
+128K 25%/50% trials2: it stayed under the memory fuse but scored 0/4 and
+generated `000000` for all rows. This strengthens the honesty of the ablation
+story, but it also shows that the top-conference method claim must be framed
+around source-aware approximate caching rather than pure QK retrieval alone.
+
 Required fix before a strong method claim:
 
-- Add a clean table with pure dot-product-only retrieval, even if weaker.
+- Extend the clean pure dot-product-only table to shorter contexts if claiming
+  a broader retrieval scaling story.
 - Label source-aware retrieval as the main high-accuracy NIAH path.
 - Explain when source-aware metadata is available and why it is not answer
   leakage.
