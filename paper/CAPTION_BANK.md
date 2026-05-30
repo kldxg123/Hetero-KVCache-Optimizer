@@ -63,3 +63,11 @@ Pure Query-Key dot-product negative controls at 128K. The clean current top8
 qhist64 configuration scores 0/4, stays below the 30 GiB fuse, and outputs
 `000000` on all rows. Earlier pure-dot variants also remain at 0/4 to 1/4.
 These negative results motivate the source-aware method boundary.
+
+## Figure: Pure Dot-Product Scaling Diagnostic
+
+Pure Query-Key dot-product retrieval without source-aware filtering,
+SourceCopy, oracle ranges, or Triton kernels. Under the same 22 GiB cap, it
+scores 4/8 at 16K, 5/8 at 32K, and 2/8 at 64K across required depths
+25%, 50%, 75%, and 90%. The result stays inside the memory envelope but fails
+quality, supporting the boundary that the promoted path is source-aware.

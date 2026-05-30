@@ -16,7 +16,7 @@ must not be used in the paper unless it has a row here.
 | FullKV 128K fails under the 22 GiB memory envelope | Supported | `experiments/niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json` | tracker `experiments/experiment_tracker_niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json` | Negative survival control, not a quality result |
 | SourceCopy-disabled PPL degradation is controlled on tested suffix setups | Supported | WikiText-2 14K/16K/16K-offset/32K and IMDb 16K PPL JSON artifacts | `paper/figures/ppl_relative_delta_by_context.svg` | This is not a 128K PPL claim |
 | SourceCopy improves exact-string NIAH output without changing the memory envelope | Supported | SourceCopy-disabled and SourceCopy-boost20 128K ablation JSON files | `paper/figures/sourcecopy_ablation_accuracy.svg` | This is a copy-task reranker result, not general-language PPL evidence |
-| Pure token-level dot-product retrieval alone has not solved the 128K NIAH setting | Supported as negative evidence | clean current pure-dot JSON and tracker | older pure-dot trackers | These are negative controls, not final-method failures |
+| Pure token-level dot-product retrieval alone has not solved the tested NIAH settings | Supported as negative evidence | clean current pure-dot JSON and tracker | 16K/32K/64K scaling diagnostic and older pure-dot trackers | These are negative controls, not final-method failures |
 | HF `generate()` compatibility holds for smoke contexts | Supported | `experiments/experiment_tracker_stage2_generate_smoke_2k4k8k_after_fix_20260529_auto.json` | child `stage2_smoke.json` | Smoke test only, not the 128K benchmark |
 
 ## Claims That Must Not Be Made Yet
@@ -26,7 +26,7 @@ must not be used in the paper unless it has a row here.
 | Native RTX 4090 latency is validated | No real 4090 run has been performed |
 | The method is a lossless 128K full-KV replica | Project is an approximate long-context cache |
 | Token-level logits match full attention | Not a goal and not tested |
-| Pure Query-Key dot-product retrieval is the promoted 128K success path | Clean current pure-dot control is 0/4 |
+| Pure Query-Key dot-product retrieval is the promoted 128K success path | Clean current pure-dot control is 0/4 and 16K/32K/64K scaling is 11/24 |
 | The current 0% NIAH result is a valid HeteroKV failure | FullKV also fails the current 0% template |
 | 128K WikiText-2 PPL is validated | Current PPL evidence is 14K, 16K, and 32K suffix evaluation |
 | Source-aware retrieval uses answer labels | Current method must be described as using source/query signals only; any stronger claim would be incorrect |

@@ -29,6 +29,8 @@ Current evidence:
 - Source-aware retrieval uses source/query token overlap.
 - It does not use target labels, answer spans, or needle ranges.
 - Pure dot-product negative controls are reported separately.
+- A pure dot-product scaling diagnostic without source-aware filtering reaches
+  only 11/24 across 16K/32K/64K, so the paper does not hide this dependency.
 
 Response:
 

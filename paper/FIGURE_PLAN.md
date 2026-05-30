@@ -143,6 +143,25 @@ Claim supported:
 - Late-layer source-aware retrieval preserves NIAH accuracy while reducing
   latency.
 
+## Figure 7: Pure Dot-Product Diagnostic
+
+Purpose:
+
+- Show that pure Query-Key dot-product retrieval is a recorded negative
+  diagnostic, not the promoted method.
+
+Bars:
+
+- 16K: 4/8.
+- 32K: 5/8.
+- 64K: 2/8.
+- 128K clean current control: 0/4, described in the appendix.
+
+Claim supported:
+
+- Token-level dot-product scoring alone is insufficient in the tested NIAH
+  scaling setup, motivating the source-aware retrieval boundary.
+
 ## Required Styling Notes
 
 - Every plot must include exact run identifiers in the caption or appendix.
@@ -169,6 +188,7 @@ Generated files:
 - `paper/figures/layer_ablation_latency.svg`
 - `paper/figures/sourcecopy_ablation_accuracy.svg`
 - `paper/figures/pure_dotproduct_failed_accuracy.svg`
+- `paper/figures/pure_dotproduct_scaling_accuracy.svg`
 
 Memory-curve status:
 

@@ -188,6 +188,43 @@ retrieval attempts.
 | keep_tail8192, token window 64, top2, qhist64 | 0/4 | n/a | 21.0039 GiB | False | Failed pure dot-product attempt |
 | keep_tail16384, token window 64, top2, qhist64 | 0/4 | n/a | 21.0000 GiB | False | Failed pure dot-product attempt |
 
+## Pure Dot-Product Scaling Diagnostic
+
+This diagnostic reruns pure Query-Key dot-product retrieval without
+source-aware filtering, SourceCopy, oracle ranges, or Triton kernels. It uses
+the same 22 GiB PyTorch cap and 30 GiB own-process fuse as the survival tests.
+
+| Context | Depths / Trials | Accuracy | Mean Decode | Mean Prefill | Max Reserved | Max Allocated | Max HBM Tokens | Max DRAM Entries |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16K | 25/50/75/90, 2 each | 4/8 | 157.07 ms/step | 5.19 s | 21.32 GiB | 19.67 GiB | 12352 | 112 |
+| 32K | 25/50/75/90, 2 each | 5/8 | 298.10 ms/step | 11.30 s | 21.32 GiB | 19.67 GiB | 12352 | 336 |
+| 64K | 25/50/75/90, 2 each | 2/8 | 497.88 ms/step | 23.56 s | 21.31 GiB | 19.67 GiB | 12352 | 784 |
+
+Depth detail:
+
+| Context | 25% | 50% | 75% | 90% |
+| ---: | ---: | ---: | ---: | ---: |
+| 16K | 0/2 | 1/2 | 2/2 | 1/2 |
+| 32K | 0/2 | 1/2 | 2/2 | 2/2 |
+| 64K | 0/2 | 0/2 | 1/2 | 1/2 |
+
+Artifact:
+
+- `experiments/niah_pure_dotproduct_scaling_16k32k64k_required4_trials2_seed6004_gpu_auto_20260530_auto.json`
+- `experiments/experiment_tracker_niah_pure_dotproduct_scaling_16k32k64k_required4_trials2_seed6004_gpu_auto_20260530_auto.json`
+- `experiments/niah_pure_dotproduct_scaling_16k32k64k_required4_trials2_seed6004_gpu_auto_20260530_auto.log`
+
+Interpretation:
+
+- The run stayed inside the memory envelope and did not trigger the 30 GiB
+  safety fuse.
+- Quality failed at 11/24, especially at 25% depth across all tested lengths.
+- This separates the memory-survival success from retrieval-quality success:
+  pure token-level dot-product scoring is not enough by itself for the main
+  128K claim.
+- The promoted method should therefore be described as source-aware retrieval
+  plus token-level scoring, not pure dot-product retrieval.
+
 Artifacts:
 
 - `experiments/experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_20260527_210444.json`

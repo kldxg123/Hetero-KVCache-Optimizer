@@ -199,6 +199,21 @@ def main() -> None:
     no_sourcecopy = load("niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json")
     sourcecopy = load("niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json")
     clean_pure = load("niah_128k_depth25_50_trials2_pure_dotproduct_clean_seed6004_gpu1_20260530_auto.json")
+    pure_scaling = load("niah_pure_dotproduct_scaling_16k32k64k_required4_trials2_seed6004_gpu_auto_20260530_auto.json")
+    pure_scaling_by_length = {}
+    for length in sorted({row["target_tokens"] for row in pure_scaling["niah"]["rows"]}):
+        length_rows = [row for row in pure_scaling["niah"]["rows"] if row["target_tokens"] == length]
+        decode_values = [row["latency_breakdown"]["decode_ms_per_step"] for row in length_rows]
+        pure_scaling_by_length[str(length)] = {
+            "correct": sum(row["correct"] for row in length_rows),
+            "total": len(length_rows),
+            "accuracy": sum(row["correct"] for row in length_rows) / len(length_rows),
+            "mean_decode_ms_per_step": mean(decode_values),
+            "max_reserved_gib": max(row["max_reserved_gib"] for row in length_rows),
+            "max_allocated_gib": max(row["max_allocated_gib"] for row in length_rows),
+            "max_hbm_tokens": max(row["memory_summary"]["max_hbm_tokens"] for row in length_rows),
+            "max_dram_entries": max(row["memory_summary"]["dram_entries"] for row in length_rows),
+        }
     pure_dot = {
         "clean_current_top8_qhist64": {
             "status": clean_pure["status"],
@@ -291,6 +306,15 @@ def main() -> None:
                 "accuracy": sourcecopy["niah"]["accuracy"],
             },
             "pure_dotproduct_trackers": pure_dot,
+            "pure_dotproduct_scaling": {
+                "status": pure_scaling["status"],
+                "correct": pure_scaling["niah"]["correct"],
+                "total": pure_scaling["niah"]["total"],
+                "accuracy": pure_scaling["niah"]["accuracy"],
+                "gpu_index": pure_scaling["gpu_index"],
+                "cap_gib": pure_scaling["cap_gib"],
+                "by_length": pure_scaling_by_length,
+            },
         },
         "memory_curve": {
             "source": "experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.log",
@@ -413,6 +437,18 @@ def main() -> None:
         ],
         "%",
         ["#c0392b", "#95a5a6", "#95a5a6", "#95a5a6", "#95a5a6"],
+    )
+    bar_chart(
+        OUT_DIR / "pure_dotproduct_scaling_accuracy.svg",
+        "Pure Dot-Product Scaling Diagnostic",
+        ["16K", "32K", "64K"],
+        [
+            pure_scaling_by_length["16384"]["accuracy"] * 100,
+            pure_scaling_by_length["32768"]["accuracy"] * 100,
+            pure_scaling_by_length["65536"]["accuracy"] * 100,
+        ],
+        "%",
+        ["#95a5a6", "#95a5a6", "#c0392b"],
     )
 
     print(f"wrote {DATA_DIR / 'workflow3_summary.json'}")

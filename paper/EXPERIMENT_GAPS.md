@@ -32,13 +32,18 @@ Current status:
 - A current clean 128K pure dot-product top8/qhist64 negative control has now
   been run with unique outputs: 0/4, mean decode 1005.04 ms/step, peak
   21.8242 GiB, no monitor kill.
+- A pure dot-product scaling diagnostic has been run at 16K/32K/64K with
+  required depths 25/50/75/90 and 2 trials each. It stayed under the 22 GiB
+  cap but failed quality at 11/24 overall.
 
 Needed:
 
-- A broader pure dot-product-only retrieval table at 16K/32K/128K where
-  feasible.
-- Compare against source-aware prefilter on the same prompts.
-- Use unique child output paths for any additional rows.
+- If the paper still wants to claim a pure retrieval baseline, compare
+  source-aware prefilter and pure dot-product on exactly matched shorter
+  prompts.
+- Otherwise, treat this gap as resolved by claim narrowing: the promoted method
+  is source-aware retrieval plus token-level scoring, not pure dot-product
+  alone.
 
 Purpose:
 

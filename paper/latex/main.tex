@@ -101,7 +101,12 @@ IMDb 16K & 15.2031 & 15.3683 & +1.09\% \\
 
 A clean current pure dot-product top8/qhist64 128K control scores 0/4 on the
 25\%/50\% subset, with mean decode 1005.04 ms/step and peak process memory
-21.8242 GiB. Earlier pure-dot variants score 0/4 to 1/4.
+21.8242 GiB. Earlier pure-dot variants score 0/4 to 1/4. A broader pure
+dot-product scaling diagnostic, run without source-aware filtering or
+SourceCopy under the same 22 GiB cap, scores 4/8 at 16K, 5/8 at 32K, and
+2/8 at 64K across required depths 25\%, 50\%, 75\%, and 90\%. This confirms
+that pure QK scoring stayed within the memory envelope but did not provide the
+quality of the promoted source-aware path.
 
 \section{Limitations}
 

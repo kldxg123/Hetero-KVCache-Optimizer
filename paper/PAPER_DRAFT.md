@@ -143,6 +143,13 @@ non-discriminative because the FullKV wide-memory baseline also failed it.
 Rejected diagnostics and invalid runs are retained in `RESULT_TABLES.md` and
 must not be removed from the record.
 
+Pure Query-Key dot-product retrieval was also tested as a separate diagnostic,
+without source-aware filtering or SourceCopy. At 16K/32K/64K with required
+depths and two trials per depth, it achieved 4/8, 5/8, and 2/8 respectively
+under the same 22 GiB cap. The clean 128K pure-dot control was 0/4. These
+results motivate the claim boundary: token-level dot-product scoring is useful
+as a retrieval primitive, but the promoted 128K success path is source-aware.
+
 ## 7. Limitations
 
 The current results have several explicit limits:
@@ -163,7 +170,7 @@ The next paper-grade improvements are:
 1. Rerun survival and latency on a real RTX 4090 24GB GPU.
 2. Redesign optional 0% NIAH so FullKV passes it, then retest HeteroKV.
 3. Add a larger PPL suite or longer-context PPL if runtime allows.
-4. Add a clean pure-dot-product retrieval table, separate from source-aware
-   retrieval.
+4. Compare source-aware and pure dot-product retrieval on matched shorter
+   prompts only if the final paper needs a dedicated matched ablation.
 5. Plot active HBM tokens, DRAM tokens/bytes, and process memory over prefill
    chunks for the promoted 128K run.

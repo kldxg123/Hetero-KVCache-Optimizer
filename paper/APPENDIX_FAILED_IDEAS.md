@@ -23,6 +23,7 @@ This appendix prevents repeated dead ends and preserves negative evidence.
 | Claim 4090 latency from A100-under-cap | Hardware differs | Disallowed |
 | Earlier 128K pure dot-product top2/top8/qhist variants | 0/4 to 1/4, all below 30 GiB fuse | Preserve as failed ablation, not final method |
 | Clean current 128K pure dot-product top8/qhist64 | 0/4, mean decode 1005.04 ms/step, peak 21.8242 GiB | Preserve as current negative control |
+| Pure dot-product scaling at 16K/32K/64K | 11/24 total under 22 GiB cap; 16K 4/8, 32K 5/8, 64K 2/8; strongest failures at 25% depth | Preserve as scaling diagnostic; confirms pure QK scoring alone is not the promoted path |
 
 ## Diagnostic-Only Evidence
 
@@ -44,3 +45,6 @@ Rules:
   lower task elapsed time from shorter generation.
 - Source-aware exact-copy results and general-language PPL results must stay in
   separate tables.
+- Pure Query-Key dot-product retrieval can remain useful as a diagnostic
+  primitive, but current evidence shows it needs source-aware filtering or a
+  stronger reranker for reliable 128K NIAH.
