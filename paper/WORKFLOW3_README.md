@@ -53,3 +53,5 @@ The project target is fixed-HBM survival with controlled semantic loss:
 - `PAPER_DRAFT.md`: initial paper skeleton and draft text.
 - `FIGURE_PLAN.md`: figures needed for a paper or thesis defense.
 - `AUTO_REVIEW_CHECKLIST.md`: automatic review checklist before each revision.
+- `ARTIFACT_CLAIM_MAP.md`: one-to-one mapping from claims to artifacts.
+- `REPRODUCIBILITY.md`: reproduction surface, safety rules, and caveats.
