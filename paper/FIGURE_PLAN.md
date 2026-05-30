@@ -112,11 +112,12 @@ Bars:
 - FullKV PPL: 2.9706.
 - HeteroKV PPL: 3.0063.
 - Delta: +1.20%.
+- Additional relative-delta bars: 16K +1.66%, 16K offset32768 +0.45%.
 
 Required label:
 
 - SourceCopy disabled.
-- 14K-token PPL setup.
+- 14K/16K/16K offset32768 PPL setups.
 
 Claim supported:
 

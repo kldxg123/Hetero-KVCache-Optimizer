@@ -44,7 +44,8 @@ Risk: medium-high.
 Current evidence:
 
 - NIAH required-depth result is strong: 24/24.
-- PPL has two SourceCopy-disabled suffix setups: +1.20% and +1.66%.
+- PPL has three SourceCopy-disabled suffix setups: +1.20%, +1.66%, and +0.45%
+  at token offset 32768.
 
 Response:
 
@@ -92,7 +93,7 @@ Risk: medium.
 
 Current evidence:
 
-- 14K and 16K SourceCopy-disabled PPL pass within 5%.
+- 14K, 16K, and 16K offset32768 SourceCopy-disabled PPL pass within 5%.
 
 Response:
 

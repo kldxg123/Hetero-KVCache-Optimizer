@@ -13,7 +13,7 @@ top-conference submission claim.
 | A100 memory-envelope survival | Passed | 22 GiB PyTorch cap, 30 GiB fuse, 22348 MB peak |
 | FullKV 22 GiB-cap negative control | Passed | 128K FullKV fails with CUDA OOM under the same cap without 30 GiB fuse trigger |
 | Source-aware latency target | Passed | 98.12 ms/step, 1.88x FullKV A100 reference |
-| PPL degradation on tested setups | Passed | +1.20% and +1.66% on SourceCopy-disabled WikiText-2 suffix evaluations |
+| PPL degradation on tested setups | Passed | +1.20%, +1.66%, and +0.45% on SourceCopy-disabled WikiText-2 suffix evaluations |
 | Generate API smoke | Passed | 2K/4K/8K HF `generate()` smoke |
 | Negative-result preservation | Passed | Failed ideas and invalid runs recorded |
 
@@ -22,7 +22,7 @@ top-conference submission claim.
 | Gate | Status | Required Action |
 | --- | --- | --- |
 | True RTX 4090 latency | Not passed | Run on real RTX 4090 or weaken claim |
-| Broad semantic quality | Partially passed | Two SourceCopy-disabled WikiText-2 suffix setups pass; add offsets or second corpus for a broad claim |
+| Broad semantic quality | Partially passed | Three SourceCopy-disabled WikiText-2 suffix setups pass, including token offset 32768; add a second corpus for a broad claim |
 | Pure dot-product retrieval claim | Not passed | Current clean 128K pure-dot control is 0/4; keep claim source-aware or add shorter-context scaling table |
 | 0% NIAH discriminativeness | Not passed | Redesign template and require FullKV pass |
 | Paper-ready figures | Partially passed | Main result, latency, PPL, ablation, and memory curves rendered; still need final paper styling/captions |

@@ -53,6 +53,8 @@ Allowed:
 - The measured PPL delta is +1.20% relative to the FullKV baseline on the
   validated 14K-token decode-suffix setup.
 - A second 16K-token SourceCopy-disabled setup has +1.66% relative PPL delta.
+- A third 16K-token SourceCopy-disabled setup at WikiText-2 token offset 32768
+  has +0.45% relative PPL delta.
 - This supports a controlled semantic-loss claim for that PPL setup.
 
 Do not overstate:
@@ -60,6 +62,7 @@ Do not overstate:
 - Do not claim 128K WikiText-2 PPL unless a true 128K PPL experiment is run.
 - Do not claim the source-aware exact-copy NIAH mechanism improves general PPL
   unless it is tested separately.
+- Do not hide that PPL evidence is still WikiText-2 only.
 
 ### Latency
 

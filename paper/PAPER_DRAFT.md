@@ -22,8 +22,9 @@ configuration achieves 24/24 accuracy across required depths 25%, 50%, 75%,
 and 90% under an A100 run constrained to a 4090-like memory envelope. The same
 configuration runs with a 22 GiB PyTorch cap and a 30 GiB own-process safety
 fuse, reaches 98.12 ms/step mean decode latency, and is 1.88x the wide-memory
-A100 FullKV reference for this setting. On a separate SourceCopy-disabled
-WikiText-2 PPL setup, HeteroKV shows a +1.20% PPL delta relative to FullKV.
+A100 FullKV reference for this setting. On separate SourceCopy-disabled
+WikiText-2 PPL setups, HeteroKV shows +1.20%, +1.66%, and +0.45% relative PPL
+deltas compared with FullKV.
 These results support HeteroKV as an approximate long-context survival
 mechanism, while leaving true RTX 4090 latency and broader 128K PPL validation
 as future hardware-specific work.
@@ -56,8 +57,8 @@ claim is an A100 run under a 4090-like memory envelope.
 
 The current strongest NIAH path uses source-aware retrieval support. It should
 be described as a source-aware exact-copy/NIAH path, not as pure dot-product
-retrieval alone. General-language quality is evaluated separately through a
-SourceCopy-disabled WikiText-2 PPL run.
+retrieval alone. General-language quality is evaluated separately through
+SourceCopy-disabled WikiText-2 PPL runs.
 
 ## 3. Method
 
@@ -107,6 +108,8 @@ Main NIAH depths: 25%, 50%, 75%, 90%.
 Optional edge depths: 0%, 99%.
 
 PPL dataset: WikiText-2, real loss/PPL calculation, SourceCopy disabled.
+Validated windows include a 14K suffix setup, a 16K suffix setup, and a 16K
+suffix setup starting at token offset 32768.
 
 Baseline latency reference: FullKV SDPA manual decode on wide-memory A100.
 
@@ -118,8 +121,10 @@ with 52.25 ms/step for the wide-memory FullKV A100 reference, giving a 1.88x
 ratio. Own-process monitor peak was 22348 MB and no 30 GiB fuse trigger
 occurred.
 
-On WikiText-2, the SourceCopy-disabled PPL run measured FullKV PPL 2.9706 and
-HeteroKV PPL 3.0063, a +1.20% relative delta.
+On WikiText-2, SourceCopy-disabled PPL measured three relative deltas within
+the 5% semantic-loss budget: +1.20% on the 14K suffix setup, +1.66% on the
+16K suffix setup, and +0.45% on a 16K suffix setup starting at token offset
+32768.
 
 Generate smoke tests passed for 2K, 4K, and 8K contexts through the ordinary HF
 `generate()` path.
@@ -144,7 +149,8 @@ The current results have several explicit limits:
 - A100-under-cap latency is not native RTX 4090 latency.
 - The strongest NIAH result is source-aware and should not be called pure
   dot-product retrieval.
-- PPL evidence is SourceCopy-disabled and measured on a 14K setup, not 128K.
+- PPL evidence is SourceCopy-disabled and measured on 14K/16K suffix setups,
+  not 128K.
 - The optional 0% NIAH template needs redesign before it can be used as a
   discriminative benchmark.
 - The project is an approximate cache, not a lossless full-attention system.
