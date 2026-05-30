@@ -182,8 +182,14 @@ def main() -> None:
     ppl = load("ppl_14k_prefix12288_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_allowcoexist_gpu3_20260529_auto.json")
     ppl16 = load("ppl_16k_prefix14336_tail4096_gate5_top1_nofusion_sdpa_ttl12_sourcecopy_disabled_gpu1_20260530_auto.json")
     fullkv = load("niah_fullkv_128k_cap75_sdpa_manual_latency_refresh_gpu1_20260529_auto.json")
+    fullkv_cap = load("niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json")
+    fullkv_cap_tracker = load("experiment_tracker_niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json")
     full_row = fullkv["niah"]["rows"][0]
     full_decode = full_row["latency_breakdown"]["decode_ms_per_step"]
+    fullkv_cap_row = fullkv_cap["niah"]["rows"][0]
+    fullkv_cap_monitor = tracker_niah_summary(
+        "experiment_tracker_niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json"
+    )
 
     no_sourcecopy = load("niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json")
     sourcecopy = load("niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json")
@@ -220,6 +226,15 @@ def main() -> None:
             "max_hbm_tokens_max": max(max_hbm),
             "dram_bytes_mean": mean(dram_bytes),
             "monitor_peak_mb": 22348,
+        },
+        "fullkv_22g_cap": {
+            "status": fullkv_cap["status"],
+            "oom": bool(fullkv_cap_row.get("oom")),
+            "max_allocated_gib": fullkv_cap_row.get("max_allocated_gib"),
+            "max_reserved_gib": fullkv_cap_row.get("max_reserved_gib"),
+            "monitor_max_process_memory_gib": fullkv_cap_monitor.get("monitor_max_process_memory_gib"),
+            "monitor_killed_by_monitor": fullkv_cap_monitor.get("monitor_killed_by_monitor"),
+            "tracker_status": fullkv_cap_tracker["runs"][0]["status"],
         },
         "ppl": {
             "fullkv": ppl["modes"]["full"]["ppl"],
@@ -300,6 +315,14 @@ def main() -> None:
         [mean(max_reserved), 22348 / 1024],
         "",
         ["#8e44ad", "#16a085"],
+    )
+    bar_chart(
+        OUT_DIR / "survival_outcome.svg",
+        "128K 22GiB-Cap Survival Outcome",
+        ["HeteroKV", "FullKV"],
+        [100, 0],
+        "%",
+        ["#27ae60", "#c0392b"],
     )
     memory_curve = summary["memory_curve"]["records"]
     if memory_curve:

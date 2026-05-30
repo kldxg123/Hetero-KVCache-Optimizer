@@ -18,6 +18,8 @@ Allowed:
   triggering the 30 GiB fuse.
 - Active HBM KV stays bounded by the configured cache policy while compressed
   DRAM-side KV grows with context length.
+- A FullKV 128K negative control under the same 22 GiB PyTorch cap fails with
+  CUDA OOM, while the monitor does not trigger the 30 GiB safety fuse.
 
 Do not overstate:
 
@@ -25,6 +27,8 @@ Do not overstate:
   RTX 4090.
 - Do not claim all CUDA allocations are physically capped by PyTorch alone.
   The cap is a PyTorch allocator cap, not a hardware isolation mechanism.
+- Do not treat the FullKV 22 GiB-cap OOM row as a quality or accuracy result;
+  it is a survival negative control.
 
 ### NIAH Accuracy
 
@@ -48,6 +52,7 @@ Allowed:
 - The current real WikiText-2 PPL evidence is SourceCopy-disabled.
 - The measured PPL delta is +1.20% relative to the FullKV baseline on the
   validated 14K-token decode-suffix setup.
+- A second 16K-token SourceCopy-disabled setup has +1.66% relative PPL delta.
 - This supports a controlled semantic-loss claim for that PPL setup.
 
 Do not overstate:

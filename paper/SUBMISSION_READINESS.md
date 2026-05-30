@@ -11,8 +11,9 @@ top-conference submission claim.
 | --- | --- | --- |
 | 128K required-depth NIAH | Passed | 24/24 across depths 25/50/75/90 |
 | A100 memory-envelope survival | Passed | 22 GiB PyTorch cap, 30 GiB fuse, 22348 MB peak |
+| FullKV 22 GiB-cap negative control | Passed | 128K FullKV fails with CUDA OOM under the same cap without 30 GiB fuse trigger |
 | Source-aware latency target | Passed | 98.12 ms/step, 1.88x FullKV A100 reference |
-| PPL degradation on tested setup | Passed | +1.20% on SourceCopy-disabled WikiText-2 |
+| PPL degradation on tested setups | Passed | +1.20% and +1.66% on SourceCopy-disabled WikiText-2 suffix evaluations |
 | Generate API smoke | Passed | 2K/4K/8K HF `generate()` smoke |
 | Negative-result preservation | Passed | Failed ideas and invalid runs recorded |
 

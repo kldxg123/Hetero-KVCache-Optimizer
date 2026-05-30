@@ -49,6 +49,28 @@ Expected aggregate:
 - Monitor peak: about 22348 MB.
 - Active HBM KV plateau: 8192 tokens after warmup.
 
+## FullKV 22 GiB-Cap Negative Control
+
+Validated setup:
+
+- Length: 131072 tokens.
+- Depth: 25%.
+- Trial: 1.
+- Mode: `full_kv_baseline`.
+- Cap: 22 GiB.
+- Fuse: 30 GiB.
+
+Expected outcome:
+
+- CUDA OOM before generation succeeds.
+- PyTorch reports about 20.90 GiB process memory in use against the 22.00 GiB
+  allowance.
+- Max reserved in the row is about 20.62 GiB.
+- The external monitor does not trigger the 30 GiB fuse.
+
+This row should be reported as a survival negative control, not as NIAH
+quality evidence.
+
 ## PPL Reproduction Surface
 
 PPL is evaluated with SourceCopy disabled and should be reported separately

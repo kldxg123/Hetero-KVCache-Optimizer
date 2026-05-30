@@ -26,6 +26,14 @@ HBM KV reaches 8192 tokens and stays bounded, while compressed DRAM-side KV
 grows to 122880 tokens. The same log records max torch reserved memory of
 21.33 GiB and max nvidia-smi process memory of 21.82 GiB.
 
+## Figure: 22GiB-Cap Survival Outcome
+
+128K survival outcome under the 22 GiB PyTorch memory cap. The promoted
+HeteroKV source-aware path completes the required-depth 128K NIAH suite without
+triggering the 30 GiB fuse, while the FullKV 128K baseline fails with CUDA OOM
+when PyTorch reports 20.90 GiB in use against the 22.00 GiB allowance. This is
+a survival-control figure, not an accuracy comparison.
+
 ## Figure: Latency
 
 Decode latency comparison between the promoted source-aware HeteroKV path and

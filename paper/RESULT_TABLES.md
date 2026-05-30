@@ -63,6 +63,32 @@ Interpretation:
 - FullKV reserved roughly 62.96 GiB in this reference setup, so it is not a
   4090-24G survival path.
 
+## FullKV 22 GiB-Cap Negative Control
+
+This control uses the same 128K Qwen2.5-7B-Instruct NIAH setting but runs the
+FullKV baseline under the 22 GiB PyTorch cap. It is expected to fail and is
+used only to verify that the full-cache path is not a 24G survival baseline.
+
+| Variant | Context | Cap | Depth / Trial | Outcome | Max Allocated | Max Reserved | Monitor Peak | Monitor Killed | Artifact |
+| --- | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | --- |
+| FullKV baseline, 22 GiB cap | 128K | 22 GiB | 25%, 1 trial | CUDA OOM | 19.7629 GiB | 20.6191 GiB | 13.5801 GiB | False | `experiments/niah_fullkv_128k_cap22_expected_oom_seed6004_gpu1_20260530_auto.json` |
+
+Key error text:
+
+- PyTorch reports that the process had 20.90 GiB in use against a 22.00 GiB
+  allowance and failed when trying to allocate another 1.75 GiB.
+- The external monitor did not kill the run; no 30 GiB fuse trigger occurred.
+- The monitor sampled 13.58 GiB because the OOM happened between 5-second
+  monitor samples. Use the PyTorch OOM accounting for the immediate failure
+  point and the monitor field for safety-fuse evidence.
+
+Interpretation:
+
+- This directly supports the claim that 128K FullKV is not viable under the
+  22 GiB memory envelope used for the HeteroKV survival proof.
+- This is not an accuracy result and should not be mixed into NIAH quality
+  averages.
+
 ## 128K Memory Curve Evidence
 
 Source:

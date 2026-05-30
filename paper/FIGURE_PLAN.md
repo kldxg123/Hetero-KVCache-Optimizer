@@ -85,6 +85,22 @@ Claim supported:
 
 - Latency growth is bounded and explainable for the validated path.
 
+## Figure 4b: 22GiB-Cap Survival Outcome
+
+Purpose:
+
+- Show the direct survival contrast under the same memory envelope.
+
+Bars:
+
+- HeteroKV promoted 128K run: survives.
+- FullKV 128K under 22 GiB cap: CUDA OOM.
+
+Claim supported:
+
+- The validated survival result comes from the approximate cache mechanism,
+  not from the full-cache baseline fitting under the same budget.
+
 ## Figure 5: PPL Semantic Loss
 
 Purpose:
@@ -145,6 +161,7 @@ Generated files:
 - `paper/figures/ppl_delta.svg`
 - `paper/figures/ppl_relative_delta_by_context.svg`
 - `paper/figures/memory_summary.svg`
+- `paper/figures/survival_outcome.svg`
 - `paper/figures/memory_curve_tokens.svg`
 - `paper/figures/memory_curve_gib.svg`
 - `paper/figures/layer_ablation_latency.svg`
