@@ -27,11 +27,15 @@ Current status:
 - The strongest NIAH result uses source-aware prefiltering plus token-level
   retrieval.
 - The PPL result disables SourceCopy and remains separate.
+- Earlier pure dot-product 128K attempts are preserved and failed at 0/4 to 1/4
+  while staying below the 30 GiB fuse.
 
 Needed:
 
 - A clean pure dot-product-only retrieval table at 16K/32K/128K where feasible.
 - Compare against source-aware prefilter on the same prompts.
+- Use unique child output paths, because older pure-dot trackers used the shared
+  `experiments/niah_eval.json` path.
 
 Purpose:
 

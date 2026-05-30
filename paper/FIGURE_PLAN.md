@@ -145,6 +145,8 @@ Generated files:
 - `paper/figures/ppl_delta.svg`
 - `paper/figures/memory_summary.svg`
 - `paper/figures/layer_ablation_latency.svg`
+- `paper/figures/sourcecopy_ablation_accuracy.svg`
+- `paper/figures/pure_dotproduct_failed_accuracy.svg`
 
 Remaining gap:
 

@@ -19,6 +19,7 @@ This appendix prevents repeated dead ends and preserves negative evidence.
 | Report TTL-only SourceCopy path as final | Correct but too slow before source prefilter | Superseded |
 | Report source-prefilter path as pure dot-product | Mechanism uses source-aware filtering | Disallowed |
 | Claim 4090 latency from A100-under-cap | Hardware differs | Disallowed |
+| Earlier 128K pure dot-product top2/top8/qhist variants | 0/4 to 1/4, all below 30 GiB fuse | Preserve as failed ablation, not final method |
 
 ## Diagnostic-Only Evidence
 

@@ -40,6 +40,13 @@ Local review completed:
   `paper/scripts/build_workflow3_figures.py`.
 - Initial summary figures and `paper/data/workflow3_summary.json` were
   generated from real artifacts.
+- Additional source-aware/SourceCopy and earlier pure-dotproduct failed
+  artifacts were downloaded and added to the Workflow3 summary.
+- Two additional figures were generated:
+  `sourcecopy_ablation_accuracy.svg` and
+  `pure_dotproduct_failed_accuracy.svg`.
+- The result tables now explicitly preserve earlier pure-dotproduct failures,
+  avoiding a success-only presentation.
 
 Remote status:
 
@@ -55,3 +62,14 @@ Remote status:
 2. Run remote `git diff --check` on Workflow3 paper files.
 3. Commit only Workflow3 paper/state artifacts.
 4. Continue with paper figure audit and missing-experiment decisions.
+
+## Latest Local Review Snapshot
+
+- Required-depth source-aware NIAH: `24/24`.
+- Source-aware no-SourceCopy hard ablation: `3/4`.
+- Source-aware + SourceCopy hard ablation: `4/4`.
+- Earlier pure dot-product attempts: `0/4`, `1/4`, `0/4`, `0/4`.
+- PPL SourceCopy-disabled: `+1.20%`.
+- Current submission gate remains not passed; the strongest remaining blockers
+  are real RTX 4090 validation, broader PPL, and a clean current pure-retrieval
+  table with unique child outputs.

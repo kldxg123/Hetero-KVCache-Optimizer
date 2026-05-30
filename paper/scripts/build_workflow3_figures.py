@@ -83,6 +83,22 @@ def grouped_accuracy() -> dict:
     }
 
 
+def tracker_niah_summary(name: str) -> dict:
+    data = load(name)
+    run = data["runs"][0]
+    for item in run.get("results", []):
+        if isinstance(item, dict) and item.get("name") == "niah_eval":
+            return {
+                "status": item.get("status"),
+                "correct": item.get("correct"),
+                "total": item.get("total"),
+                "accuracy": item.get("accuracy"),
+                "monitor_max_process_memory_gib": item.get("monitor_max_process_memory_gib"),
+                "monitor_killed_by_monitor": item.get("monitor_killed_by_monitor"),
+            }
+    return {"status": run.get("status")}
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -106,6 +122,15 @@ def main() -> None:
     full_row = fullkv["niah"]["rows"][0]
     full_decode = full_row["latency_breakdown"]["decode_ms_per_step"]
 
+    no_sourcecopy = load("niah_128k_depth25_50_trials2_main_nosourcecopy_driver_gpu3_20260529_auto.json")
+    sourcecopy = load("niah_128k_depth25_50_trials2_main_sourcecopy_boost20_driver_gpu3_20260529_auto.json")
+    pure_dot = {
+        "top2_win64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_20260527_210444.json"),
+        "top8_win64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top8_win64_20260527_211805.json"),
+        "top2_win64_qhist64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_qhist64_20260527_225330.json"),
+        "keep16384_top2_qhist64": tracker_niah_summary("experiment_tracker_workflow2_128k_keep16384_fp32qk_dot_top2_win64_qhist64_20260527_231620.json"),
+    }
+
     summary = {
         "required_niah": grouped_accuracy(),
         "decode_ms_per_step": {
@@ -125,6 +150,19 @@ def main() -> None:
             "fullkv": ppl["modes"]["full"]["ppl"],
             "heterokv": ppl["modes"]["heterokv"]["ppl"],
             "relative_delta": ppl["relative_ppl_delta"],
+        },
+        "ablation": {
+            "source_aware_no_sourcecopy": {
+                "correct": no_sourcecopy["niah"]["correct"],
+                "total": no_sourcecopy["niah"]["total"],
+                "accuracy": no_sourcecopy["niah"]["accuracy"],
+            },
+            "source_aware_sourcecopy_boost20": {
+                "correct": sourcecopy["niah"]["correct"],
+                "total": sourcecopy["niah"]["total"],
+                "accuracy": sourcecopy["niah"]["accuracy"],
+            },
+            "pure_dotproduct_trackers": pure_dot,
         },
     }
     (DATA_DIR / "workflow3_summary.json").write_text(
@@ -173,6 +211,30 @@ def main() -> None:
         [131.2, 118.5, 105.2, 104.9, 101.0],
         " ms",
         ["#95a5a6", "#95a5a6", "#95a5a6", "#95a5a6", "#d35400"],
+    )
+    bar_chart(
+        OUT_DIR / "sourcecopy_ablation_accuracy.svg",
+        "128K Source-Aware Exact-Copy Ablation",
+        ["No SourceCopy", "SourceCopy"],
+        [
+            no_sourcecopy["niah"]["accuracy"] * 100,
+            sourcecopy["niah"]["accuracy"] * 100,
+        ],
+        "%",
+        ["#c0392b", "#27ae60"],
+    )
+    bar_chart(
+        OUT_DIR / "pure_dotproduct_failed_accuracy.svg",
+        "Earlier 128K Pure Dot-Product Attempts",
+        ["top2", "top8", "qhist64", "keep16K"],
+        [
+            pure_dot["top2_win64"]["accuracy"] * 100,
+            pure_dot["top8_win64"]["accuracy"] * 100,
+            pure_dot["top2_win64_qhist64"]["accuracy"] * 100,
+            pure_dot["keep16384_top2_qhist64"]["accuracy"] * 100,
+        ],
+        "%",
+        ["#95a5a6", "#95a5a6", "#95a5a6", "#95a5a6"],
     )
 
     print(f"wrote {DATA_DIR / 'workflow3_summary.json'}")

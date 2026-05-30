@@ -116,6 +116,35 @@ Interpretation:
 - This table must not be used to claim pure KV-only dot-product retrieval
   solves 128K NIAH.
 
+## Earlier Pure Dot-Product 128K Attempts
+
+These runs are retained as negative evidence. They are useful reviewer-facing
+evidence that the final source-aware path was not chosen by hiding failed pure
+retrieval attempts.
+
+| Variant | Result | Monitor Peak | Monitor Killed | Treatment |
+| --- | ---: | ---: | ---: | --- |
+| keep_tail8192, token window 64, top2 | 0/4 | 21.0039 GiB | False | Failed pure dot-product attempt |
+| keep_tail8192, token window 64, top8 | 1/4 | 21.1445 GiB | False | Failed pure dot-product attempt |
+| keep_tail8192, token window 64, top2, qhist64 | 0/4 | 21.0039 GiB | False | Failed pure dot-product attempt |
+| keep_tail16384, token window 64, top2, qhist64 | 0/4 | 21.0000 GiB | False | Failed pure dot-product attempt |
+
+Artifacts:
+
+- `experiments/experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_20260527_210444.json`
+- `experiments/experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top8_win64_20260527_211805.json`
+- `experiments/experiment_tracker_workflow2_128k_keep8192_fp32qk_dot_top2_win64_qhist64_20260527_225330.json`
+- `experiments/experiment_tracker_workflow2_128k_keep16384_fp32qk_dot_top2_win64_qhist64_20260527_231620.json`
+
+Interpretation:
+
+- These runs stayed below the 30 GiB fuse but failed quality.
+- They support the current claim boundary: pure token-level dot-product was not
+  enough in these earlier 128K configurations.
+- A clean current pure-retrieval table is still a desirable missing experiment,
+  because these early trackers used the older shared `experiments/niah_eval.json`
+  child output path.
+
 ## Optional Edge Depths
 
 | Variant | Seeds | Depths | Trials | Correct | Depth 0% | Depth 99% | Peak | Artifact |
