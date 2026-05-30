@@ -63,6 +63,30 @@ Interpretation:
 - FullKV reserved roughly 62.96 GiB in this reference setup, so it is not a
   4090-24G survival path.
 
+## 128K Memory Curve Evidence
+
+Source:
+
+- `experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.log`
+- Parsed into `paper/data/workflow3_summary.json`.
+
+| Metric | Value |
+| --- | ---: |
+| Parsed prefill chunks | 64 |
+| First chunk | [0:2048] |
+| Last chunk | [129024:131066] |
+| Max active HBM KV length | 8192 tokens |
+| Final DRAM compressed KV length | 122880 tokens |
+| Max torch reserved | 21.33 GiB |
+| Max nvidia-smi process memory | 21.82 GiB |
+
+Interpretation:
+
+- The curve directly supports the O(1) active-HBM claim for the promoted
+  seed6004 128K run.
+- DRAM-side compressed KV grows with context, as expected.
+- This is a real log-derived curve, not a reconstructed schematic.
+
 ## WikiText-2 PPL
 
 Configuration:

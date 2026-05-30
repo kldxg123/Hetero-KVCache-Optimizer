@@ -85,15 +85,16 @@ Required fix before submission:
 - Or remove 0% from the main benchmark and keep it in the appendix as a
   template pathology.
 
-### 5. Figures Need Raw-Curve Backing
+### 5. Figures Now Have Raw-Curve Backing, But Need Final Styling
 
-The paper has result tables but still needs paper-grade plots.
+The paper now has result tables and raw-log-derived plots. The promoted
+seed6004 128K log yields 64 prefill chunks, active HBM KV capped at 8192 tokens,
+DRAM compressed KV growing to 122880 tokens, max torch reserved 21.33 GiB, and
+max nvidia-smi process memory 21.82 GiB.
 
 Required fix before submission:
 
-- Generate memory curves from artifact logs.
-- Plot active HBM KV tokens and DRAM bytes over prefill.
-- Plot latency ablations and PPL deltas.
+- Convert the generated SVGs into final conference styling.
 - Include run IDs in captions.
 
 ## Reviewer-Risk Questions

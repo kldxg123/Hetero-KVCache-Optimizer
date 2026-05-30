@@ -74,6 +74,12 @@ Remote status:
 - PPL SourceCopy-disabled:
   - 14K suffix setup: `+1.20%`.
   - 16K suffix setup: `+1.66%`.
+- Memory curve extracted from the promoted 128K seed6004 log:
+  - 64 prefill chunks.
+  - max active HBM KV: `8192` tokens.
+  - final DRAM compressed KV: `122880` tokens.
+  - max torch reserved: `21.33 GiB`.
+  - max nvidia-smi process memory: `21.82 GiB`.
 - Current submission gate remains not passed; the strongest remaining blockers
   are real RTX 4090 validation, additional PPL offsets/corpora for a broad
   semantic-quality claim, and a broader short-to-long pure retrieval scaling

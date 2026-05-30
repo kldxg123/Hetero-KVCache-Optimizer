@@ -145,12 +145,17 @@ Generated files:
 - `paper/figures/ppl_delta.svg`
 - `paper/figures/ppl_relative_delta_by_context.svg`
 - `paper/figures/memory_summary.svg`
+- `paper/figures/memory_curve_tokens.svg`
+- `paper/figures/memory_curve_gib.svg`
 - `paper/figures/layer_ablation_latency.svg`
 - `paper/figures/sourcecopy_ablation_accuracy.svg`
 - `paper/figures/pure_dotproduct_failed_accuracy.svg`
 
-Remaining gap:
+Memory-curve status:
 
-- `memory_summary.svg` is a peak/summary plot, not a per-prefill-chunk memory
-  curve. A true memory-curve figure still requires extracting or rerunning
-  per-chunk memory logs.
+- `memory_curve_tokens.svg` and `memory_curve_gib.svg` are extracted from the
+  real promoted 128K seed6004 required-depth log.
+- Parsed records: 64 prefill chunks.
+- Active HBM KV reaches 8192 tokens and stays flat.
+- DRAM compressed KV grows to 122880 tokens.
+- Max torch reserved is 21.33 GiB; max nvidia-smi process memory is 21.82 GiB.

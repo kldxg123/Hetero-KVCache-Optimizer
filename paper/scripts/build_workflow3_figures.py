@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 from statistics import mean, median, pstdev
 
 
@@ -58,6 +59,67 @@ def bar_chart(path: pathlib.Path, title: str, labels: list[str], values: list[fl
         body.append(text(x + bar_w / 2, y - 8, f"{value:g}{unit}", 13, "middle"))
         body.append(text(x + bar_w / 2, top + chart_h + 28, label, 13, "middle"))
     path.write_text(svg(width, height, body), encoding="utf-8", newline="\n")
+
+
+def line_chart(path: pathlib.Path, title: str, x_values: list[float], series: list[tuple[str, list[float], str]], y_unit: str) -> None:
+    width, height = 900, 500
+    left, right, top, bottom = 90, 40, 70, 90
+    chart_w = width - left - right
+    chart_h = height - top - bottom
+    max_x = max(x_values) if x_values else 1.0
+    max_y = max(max(vals) for _, vals, _ in series) if series else 1.0
+    max_y = max_y * 1.12 if max_y > 0 else 1.0
+    body = [text(width / 2, 36, title, 22, "middle")]
+    body.append(f'<line x1="{left}" y1="{top+chart_h}" x2="{width-right}" y2="{top+chart_h}" stroke="#34495e"/>')
+    body.append(f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top+chart_h}" stroke="#34495e"/>')
+    body.append(text(left - 10, top + 14, y_unit, 12, "end"))
+    body.append(text(width / 2, height - 28, "context tokens", 13, "middle"))
+    for label, vals, color in series:
+        points = []
+        for x, y in zip(x_values, vals):
+            px = left + chart_w * (x / max_x)
+            py = top + chart_h - chart_h * (y / max_y)
+            points.append(f"{px:.1f},{py:.1f}")
+        body.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="2.5"/>')
+    legend_x = left + 12
+    legend_y = top + 22
+    for i, (label, _, color) in enumerate(series):
+        y = legend_y + i * 24
+        body.append(f'<line x1="{legend_x}" y1="{y}" x2="{legend_x+24}" y2="{y}" stroke="{color}" stroke-width="3"/>')
+        body.append(text(legend_x + 32, y + 4, label, 13, "start"))
+    path.write_text(svg(width, height, body), encoding="utf-8", newline="\n")
+
+
+def parse_memory_curve() -> list[dict]:
+    log_path = ARTIFACT_DIR / "niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.log"
+    if not log_path.exists():
+        return []
+    records: list[dict] = []
+    current: dict | None = None
+    chunk_re = re.compile(r"Processed chunk \[(\d+):(\d+)\]")
+    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = chunk_re.search(line)
+        if match:
+            if current is not None:
+                records.append(current)
+            start, end = int(match.group(1)), int(match.group(2))
+            if start == 0 and records:
+                break
+            current = {"start": start, "end": end}
+            continue
+        if current is None:
+            continue
+        if "Active HBM KV length:" in line:
+            current["active_hbm_tokens"] = int(line.rsplit(":", 1)[1].strip())
+        elif "DRAM compressed KV length:" in line:
+            current["dram_tokens"] = int(line.rsplit(":", 1)[1].strip())
+        elif "torch.cuda.max_memory_reserved:" in line:
+            current["torch_reserved_gib"] = float(line.rsplit(":", 1)[1].strip().split()[0])
+        elif "nvidia-smi process memory:" in line:
+            current["nvidia_process_gib"] = float(line.rsplit(":", 1)[1].strip().split()[0])
+    if current is not None and (not records or records[-1] is not current):
+        records.append(current)
+    return records
 
 
 def grouped_accuracy() -> dict:
@@ -184,6 +246,10 @@ def main() -> None:
             },
             "pure_dotproduct_trackers": pure_dot,
         },
+        "memory_curve": {
+            "source": "experiments/niah_128k_required4_trials2_sourceprefilter_ttl24_layers22_27_seed6004_gpu3_20260529_auto.log",
+            "records": parse_memory_curve(),
+        },
     }
     (DATA_DIR / "workflow3_summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
@@ -235,6 +301,29 @@ def main() -> None:
         "",
         ["#8e44ad", "#16a085"],
     )
+    memory_curve = summary["memory_curve"]["records"]
+    if memory_curve:
+        xs = [row["end"] for row in memory_curve]
+        line_chart(
+            OUT_DIR / "memory_curve_tokens.svg",
+            "128K Prefill KV Residency",
+            xs,
+            [
+                ("Active HBM KV (K tokens)", [row["active_hbm_tokens"] / 1000 for row in memory_curve], "#2e86ab"),
+                ("DRAM compressed KV (K tokens)", [row["dram_tokens"] / 1000 for row in memory_curve], "#d35400"),
+            ],
+            "K tokens",
+        )
+        line_chart(
+            OUT_DIR / "memory_curve_gib.svg",
+            "128K Prefill Memory Curve",
+            xs,
+            [
+                ("torch reserved GiB", [row["torch_reserved_gib"] for row in memory_curve], "#8e44ad"),
+                ("nvidia-smi process GiB", [row["nvidia_process_gib"] for row in memory_curve], "#16a085"),
+            ],
+            "GiB",
+        )
     bar_chart(
         OUT_DIR / "layer_ablation_latency.svg",
         "Layer-Range Ablation Decode Latency",

@@ -24,7 +24,7 @@ top-conference submission claim.
 | Broad semantic quality | Partially passed | Two SourceCopy-disabled WikiText-2 suffix setups pass; add offsets or second corpus for a broad claim |
 | Pure dot-product retrieval claim | Not passed | Current clean 128K pure-dot control is 0/4; keep claim source-aware or add shorter-context scaling table |
 | 0% NIAH discriminativeness | Not passed | Redesign template and require FullKV pass |
-| Paper-ready figures | Not passed | Extract curves and render plots |
+| Paper-ready figures | Partially passed | Main result, latency, PPL, ablation, and memory curves rendered; still need final paper styling/captions |
 
 ## Automatic Decision
 
